@@ -103,9 +103,9 @@ fun LocalChatScreen(
         snackbarHost = { SnackbarHost(snackbarState) { Snackbar(snackbarData = it) } },
         topBar = {
             NetPopUpTopBar(
-                title    = "Local Chat",
-                subtitle = if (uiState.zoneDisplay.isNotBlank()) "Zone ${uiState.zoneDisplay}" else null,
-                actions  = {
+                showBrandLogo = true,           // logo secondaire (bulle + NetPopUp)
+                subtitle      = if (uiState.zoneDisplay.isNotBlank()) "Zone ${uiState.zoneDisplay}" else null,
+                actions       = {
                     IconButton(onClick = onNavigateToRooms) {
                         Icon(Icons.Filled.Lock, "Private Rooms", tint = Primary)
                     }

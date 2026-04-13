@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fond sombre du launcher icon — identique au Background de l'app -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#0A0A0A" />
+</shape>
