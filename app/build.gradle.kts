@@ -21,17 +21,39 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // ── Signing ───────────────────────────────────────────────────────────────
+    // Lire keystore.properties (jamais commité — voir .gitignore).
+    // Si absent (CI sans signing), le release build reste non signé.
+    signingConfigs {
+        create("release") {
+            val propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                val props = java.util.Properties().apply {
+                    load(propsFile.inputStream())
+                }
+                storeFile     = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias      = props.getProperty("keyAlias")
+                keyPassword   = props.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            isDebuggable      = false          // jamais de debug en production
             isMinifyEnabled   = true
             isShrinkResources = true
+            signingConfig     = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            isDebuggable = true
+            isDebuggable      = true
+            applicationIdSuffix = ".debug"    // APK debug installable en parallèle
+            versionNameSuffix   = "-debug"
         }
     }
 
@@ -45,7 +67,7 @@ android {
     buildFeatures { compose = true }
 
     composeOptions {
-        // Compose compiler for Kotlin 1.9.22
+        // Compose compiler pour Kotlin 1.9.22
         kotlinCompilerExtensionVersion = "1.5.10"
     }
 
@@ -65,7 +87,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
 
-    // Compose BOM — versions managed centrally
+    // Compose BOM — versions gérées centralement
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

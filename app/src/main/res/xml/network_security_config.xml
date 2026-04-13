@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Config — bloque tout trafic HTTP en clair.
+  Firebase / Google APIs utilisent uniquement HTTPS → aucun impact fonctionnel.
+  Requis pour la conformité Play Store (politique de sécurité réseau).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Certificats système uniquement (pas de user CA en production) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
