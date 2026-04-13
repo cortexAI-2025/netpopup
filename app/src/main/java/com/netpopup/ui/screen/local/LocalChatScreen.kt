@@ -4,7 +4,6 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,10 +23,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netpopup.ui.component.ChatInputBar
@@ -38,9 +42,12 @@ import com.netpopup.ui.theme.Primary
 /**
  * Local geo-based chat screen.
  *
- * On first render it requests coarse location permission so the ViewModel can
- * compute the zone ID.  If permission is denied, the app falls back to a
- * "Default Zone" and all users without location share that room.
+ * Améliorations UX :
+ *  - Auto-focus clavier via ChatInputBar(autoFocus=true).
+ *  - Scroll intelligent : descend automatiquement seulement si l'utilisateur
+ *    est déjà en bas (≤ 2 items du dernier) OU si c'est son propre message.
+ *  - Haptic "réception" (TextHandleMove, discret) quand un message étranger
+ *    arrive — ne se déclenche pas au chargement initial.
  */
 @Composable
 fun LocalChatScreen(
@@ -50,24 +57,54 @@ fun LocalChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val haptic = LocalHapticFeedback.current
 
-    // Request coarse location permission on first composition
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
+    // ── Location permission ───────────────────────────────────────────────────
+    val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* Permission result handled inside ViewModel via FusedLocationClient */ }
+    ) { /* résultat géré dans le ViewModel via FusedLocationClient */ }
 
     LaunchedEffect(Unit) {
-        locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
     }
 
-    // Scroll to the newest message whenever the list grows
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.lastIndex)
+    // ── Scroll intelligent ────────────────────────────────────────────────────
+    // Vrai si le dernier élément visible est à ≤ 2 items de la fin.
+    val isAtBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total == 0 || lastVisible >= total - 2
         }
     }
 
-    // Show errors via Snackbar
+    // Mémorise combien de messages ont été vus pour détecter les nouveaux.
+    var lastSeenCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(uiState.messages.size) {
+        val messages = uiState.messages
+        if (messages.isEmpty()) { lastSeenCount = 0; return@LaunchedEffect }
+
+        val isNew      = messages.size > lastSeenCount
+        val lastMsg    = messages.last()
+        val isSelf     = lastMsg.userId == uiState.currentUser?.id
+        val isInitLoad = lastSeenCount == 0
+
+        // Vibration légère sur message reçu (pas au chargement initial)
+        if (isNew && !isSelf && !isInitLoad) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+
+        lastSeenCount = messages.size
+
+        // Scroll uniquement si en bas OU si c'est notre propre envoi
+        if (isAtBottom || isSelf) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+
+    // ── Erreurs ───────────────────────────────────────────────────────────────
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
             snackbarHostState.showSnackbar(it)
@@ -75,18 +112,14 @@ fun LocalChatScreen(
         }
     }
 
+    // ── UI ────────────────────────────────────────────────────────────────────
     Scaffold(
-        snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
-                Snackbar(snackbarData = data)
-            }
-        },
+        snackbarHost = { SnackbarHost(snackbarHostState) { Snackbar(snackbarData = it) } },
         topBar = {
             NetPopUpTopBar(
                 title    = "Local Chat",
                 subtitle = if (uiState.zoneDisplay.isNotBlank()) "Zone ${uiState.zoneDisplay}" else null,
                 actions  = {
-                    // Navigate to private rooms
                     IconButton(onClick = onNavigateToRooms) {
                         Icon(
                             imageVector        = Icons.Filled.Lock,
@@ -98,7 +131,8 @@ fun LocalChatScreen(
             )
         },
         bottomBar = {
-            ChatInputBar(onSend = viewModel::sendMessage)
+            // autoFocus=true → clavier ouvert immédiatement
+            ChatInputBar(onSend = viewModel::sendMessage, autoFocus = true)
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->

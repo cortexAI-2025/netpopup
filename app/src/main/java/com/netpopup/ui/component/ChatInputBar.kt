@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,7 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.netpopup.data.model.Message.Companion.MAX_LENGTH
@@ -35,25 +40,41 @@ import com.netpopup.ui.theme.Primary
 import com.netpopup.ui.theme.Surface
 import com.netpopup.ui.theme.SurfaceVar
 import com.netpopup.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
 
 /**
  * Fixed bottom input bar.
- * - Submits on IME "Send" action and on the send button tap.
- * - Enforces MAX_LENGTH on the TextField itself.
- * - [onSend] is called with the trimmed text; clearing is handled internally.
+ *
+ * - [autoFocus] : ouvre le clavier immédiatement à l'entrée sur l'écran.
+ * - Vibration tactile courte au moment de l'envoi (feedback "SMS réel").
+ * - Soumet via le bouton Send ou la touche IME Send.
+ * - Limite stricte à MAX_LENGTH caractères.
  */
 @Composable
 fun ChatInputBar(
     onSend: (String) -> Unit,
+    autoFocus: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var text by remember { mutableStateOf("") }
+    val haptic = LocalHapticFeedback.current
+    val focusRequester = remember { FocusRequester() }
+
+    // ── Auto-focus : clavier ouvert dès l'arrivée sur l'écran ─────────────────
+    LaunchedEffect(Unit) {
+        if (autoFocus) {
+            delay(150) // laisse la mise en page se stabiliser
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
 
     val canSend = text.isNotBlank()
 
     fun doSend() {
         val trimmed = text.trim()
         if (trimmed.isNotBlank()) {
+            // Vibration courte — feedback "touche envoyée"
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             onSend(trimmed)
             text = ""
         }
@@ -86,9 +107,9 @@ fun ChatInputBar(
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 8.dp)
+                .focusRequester(focusRequester)   // cible de requestFocus()
         )
 
-        // Send button
         IconButton(
             onClick  = { doSend() },
             enabled  = canSend,
@@ -98,9 +119,9 @@ fun ChatInputBar(
                 .background(if (canSend) Primary else Outline)
         ) {
             Icon(
-                imageVector         = Icons.Filled.Send,
-                contentDescription  = "Send",
-                tint                = if (canSend) Color.Black else TextSecondary
+                imageVector        = Icons.Filled.Send,
+                contentDescription = "Send",
+                tint               = if (canSend) Color.Black else TextSecondary
             )
         }
     }
