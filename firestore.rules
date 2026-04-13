@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+
+    // Ensure the caller is signed in (even anonymously)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Ensure the caller's UID matches the document's userId field
+    function isOwner(resource) {
+      return request.auth.uid == resource.data.userId;
+    }
+
+    // Validate an incoming message write
+    function validMessage() {
+      let msg = request.resource.data;
+      return msg.keys().hasAll(['id','roomId','userId','username','content','timestamp','expiresAt'])
+        && msg.content is string
+        && msg.content.size() > 0
+        && msg.content.size() <= 500
+        && msg.userId == request.auth.uid
+        && msg.timestamp is int
+        && msg.expiresAt is int;
+    }
+
+    // ── Rooms ─────────────────────────────────────────────────────────────────
+    match /rooms/{roomId} {
+      // Anyone signed in can read room metadata
+      allow read: if isAuthenticated();
+
+      // Rooms are created by the client but only if the document doesn't exist
+      // (prevents overwriting existing rooms)
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll(['id','type','zoneId','code','createdAt']);
+
+      // No updates or deletes from the client
+      allow update, delete: if false;
+    }
+
+    // ── Messages ──────────────────────────────────────────────────────────────
+    match /messages/{messageId} {
+      // Any signed-in user can read messages (client filters blocked users)
+      allow read: if isAuthenticated();
+
+      // Create: must be owner and pass validation
+      allow create: if isAuthenticated() && validMessage();
+
+      // Update: only allowed for reporting (setting reported=true)
+      allow update: if isAuthenticated()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reported'])
+        && request.resource.data.reported == true;
+
+      // Delete: only the message owner can delete their own message
+      allow delete: if isAuthenticated() && isOwner(resource);
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read:   if isAuthenticated();
+      allow write:  if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

@@ -1,0 +1,38 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ / Android Studio
+*.iml
+.idea/
+*.ipr
+*.iws
+out/
+captures/
+
+# Android
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Firebase — NEVER commit real config
+app/google-services.json
+
+# Keys / secrets
+*.jks
+*.keystore
+*.p12
+keystore.properties
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Kotlin / Java
+*.class
+*.log

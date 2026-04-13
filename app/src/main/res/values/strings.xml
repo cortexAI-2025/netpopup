@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NetPopUp</string>
+    <string name="local_chat">Local Chat</string>
+    <string name="private_rooms">Private Rooms</string>
+    <string name="create_room">Create Room</string>
+    <string name="join_room">Join Room</string>
+    <string name="send">Send</string>
+    <string name="message_hint">Message…</string>
+    <string name="room_code_hint">Enter room code</string>
+    <string name="error_message_too_long">Message is too long (max 500 chars)</string>
+    <string name="error_rate_limit">Please wait before sending again</string>
+</resources>
