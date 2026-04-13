@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -30,8 +29,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.netpopup.data.model.Message.Companion.MAX_LENGTH
@@ -40,30 +37,32 @@ import com.netpopup.ui.theme.Primary
 import com.netpopup.ui.theme.Surface
 import com.netpopup.ui.theme.SurfaceVar
 import com.netpopup.ui.theme.TextSecondary
+import com.netpopup.ui.util.FeedbackManager
 import kotlinx.coroutines.delay
 
 /**
- * Fixed bottom input bar.
+ * Barre de saisie fixe en bas de l'écran.
  *
- * - [autoFocus] : ouvre le clavier immédiatement à l'entrée sur l'écran.
- * - Vibration tactile courte au moment de l'envoi (feedback "SMS réel").
- * - Soumet via le bouton Send ou la touche IME Send.
- * - Limite stricte à MAX_LENGTH caractères.
+ * Responsabilités :
+ *  - Saisie texte (≤ MAX_LENGTH), multi-ligne (max 4 lignes).
+ *  - Auto-focus clavier si [autoFocus] = true.
+ *  - Délègue tout le feedback sensoriel à [feedbackManager] — pas de
+ *    référence directe à HapticFeedback ici.
  */
 @Composable
 fun ChatInputBar(
     onSend: (String) -> Unit,
+    feedbackManager: FeedbackManager,
     autoFocus: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var text by remember { mutableStateOf("") }
-    val haptic = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
 
-    // ── Auto-focus : clavier ouvert dès l'arrivée sur l'écran ─────────────────
+    // ── Auto-focus ────────────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         if (autoFocus) {
-            delay(150) // laisse la mise en page se stabiliser
+            delay(150) // laisse le Scaffold se stabiliser avant requestFocus
             try { focusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
@@ -73,8 +72,7 @@ fun ChatInputBar(
     fun doSend() {
         val trimmed = text.trim()
         if (trimmed.isNotBlank()) {
-            // Vibration courte — feedback "touche envoyée"
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            feedbackManager.onSent()   // feedback envoi via FeedbackManager
             onSend(trimmed)
             text = ""
         }
@@ -89,11 +87,11 @@ fun ChatInputBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TextField(
-            value         = text,
-            onValueChange = { if (it.length <= MAX_LENGTH) text = it },
-            placeholder   = { Text("Message…", color = TextSecondary) },
-            singleLine    = false,
-            maxLines      = 4,
+            value           = text,
+            onValueChange   = { if (it.length <= MAX_LENGTH) text = it },
+            placeholder     = { Text("Message…", color = TextSecondary) },
+            singleLine      = false,
+            maxLines        = 4,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { doSend() }),
             colors = TextFieldDefaults.colors(
@@ -107,7 +105,7 @@ fun ChatInputBar(
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 8.dp)
-                .focusRequester(focusRequester)   // cible de requestFocus()
+                .focusRequester(focusRequester)
         )
 
         IconButton(
