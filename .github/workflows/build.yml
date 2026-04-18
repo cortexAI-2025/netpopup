@@ -39,6 +39,9 @@ jobs:
       # google-services.json est gitignored. On injecte un placeholder structurellement
       # valide pour que le plugin parse sans erreur. Les appels Firebase échouent au
       # runtime uniquement (attendu en CI).
+      # Debug applicationId = com.netpopup.debug (applicationIdSuffix = ".debug")
+      # Le plugin google-services cherche ce package exact dans le JSON — sans entrée
+      # matching il échoue avec "No matching client found". On déclare les deux.
       - name: Create google-services.json placeholder
         run: |
           cat > app/google-services.json <<'EOF'
@@ -53,6 +56,15 @@ jobs:
                 "client_info": {
                   "mobilesdk_app_id": "1:000000000000:android:00000000000000000000000000000000",
                   "android_client_info": { "package_name": "com.netpopup" }
+                },
+                "oauth_client": [],
+                "api_key": [{ "current_key": "AIzaSyA-PLACEHOLDER-REPLACE-WITH-REAL-KEY" }],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              },
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:00000000000000000000000000000001",
+                  "android_client_info": { "package_name": "com.netpopup.debug" }
                 },
                 "oauth_client": [],
                 "api_key": [{ "current_key": "AIzaSyA-PLACEHOLDER-REPLACE-WITH-REAL-KEY" }],
