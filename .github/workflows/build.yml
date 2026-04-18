@@ -80,15 +80,14 @@ jobs:
           gradle assembleDebug --stacktrace --no-daemon --max-workers=1 \
             2>&1 | tee /tmp/gradle-build.log
 
-      - name: Extract real error on failure
+      - name: Show build log on failure
         if: failure()
         run: |
-          echo "════════ CAUSED BY ════════"
-          grep -A 10 "Caused by:" /tmp/gradle-build.log | head -60 || true
-          echo "════════ WHAT WENT WRONG ════════"
-          grep -A 10 "What went wrong" /tmp/gradle-build.log | head -40 || true
-          echo "════════ COMPILE / RESOURCE ERRORS ════════"
-          grep -iE "(error:|AAPT|resource.*not found|unresolved reference|failed)" /tmp/gradle-build.log | head -30 || true
+          echo "════════ BUILD LOG — DÉBUT (300 lignes) ════════"
+          head -300 /tmp/gradle-build.log || true
+          echo ""
+          echo "════════ BUILD LOG — FIN (100 lignes) ════════"
+          tail -100 /tmp/gradle-build.log || true
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
