@@ -28,17 +28,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
+      # ubuntu-latest already ships android-34 + build-tools 34.0.0.
+      # Only need to accept licenses; skip sdkmanager installs (they block on prompts).
       - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Install required SDK components
-        run: |
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
@@ -46,13 +40,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # google-services.json is gitignored; inject a structurally valid placeholder
+      # so the Gradle plugin parses without error. Firebase calls fail at runtime only.
       - name: Create google-services.json placeholder
-        # google-services.json is gitignored. For debug CI we inject a valid-format
-        # placeholder so the plugin doesn't abort. Firebase calls will fail at runtime
-        # (expected — real credentials come via the GOOGLE_SERVICES_JSON secret in release).
         run: |
-          if [ ! -f app/google-services.json ]; then
-            cat > app/google-services.json <<'GSJSON'
+          cat > app/google-services.json <<'EOF'
           {
             "project_info": {
               "project_number": "000000000000",
@@ -63,29 +55,18 @@ jobs:
               {
                 "client_info": {
                   "mobilesdk_app_id": "1:000000000000:android:00000000000000000000000000000000",
-                  "android_client_info": {
-                    "package_name": "com.netpopup"
-                  }
+                  "android_client_info": { "package_name": "com.netpopup" }
                 },
                 "oauth_client": [],
-                "api_key": [
-                  {
-                    "current_key": "AIzaSyA-PLACEHOLDER-REPLACE-WITH-REAL-KEY"
-                  }
-                ],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": []
-                  }
-                }
+                "api_key": [{ "current_key": "AIzaSyA-PLACEHOLDER-REPLACE-WITH-REAL-KEY" }],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
               }
             ],
             "configuration_version": "1"
           }
-          GSJSON
-          fi
+          EOF
 
-      - name: Cache Gradle packages
+      - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
@@ -95,13 +76,24 @@ jobs:
           restore-keys: gradle-
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
+          GRADLE_OPTS: >-
+            -Dorg.gradle.jvmargs=-Xmx4g
+            -Dorg.gradle.daemon=false
+            -Dkotlin.incremental=false
+            -Dkapt.use.worker.api=false
 
-      - name: Show build errors on failure
+      - name: Upload build log on failure
         if: failure()
-        run: grep -E "What went wrong|FAILURE|error:|Exception" build.log | head -40 || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.sha }}
+          path: build.log
+          retention-days: 7
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -114,7 +106,6 @@ jobs:
     name: Build Release APK + AAB
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Only on pushes to main — secrets not available on fork PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-debug
 
@@ -127,17 +118,9 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Install required SDK components
-        run: |
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
@@ -145,7 +128,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Cache Gradle packages
+      - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
@@ -155,8 +138,6 @@ jobs:
           restore-keys: gradle-
 
       - name: Decode keystore
-        # Generate with: base64 -w 0 netpopup-release.jks
-        # Add to GitHub Secrets as KEYSTORE_BASE64
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > netpopup-release.jks
 
       - name: Write keystore.properties
@@ -169,19 +150,26 @@ jobs:
           EOF
 
       - name: Write google-services.json
-        # Generate with: base64 -w 0 app/google-services.json
-        # Add to GitHub Secrets as GOOGLE_SERVICES_JSON
         run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Build release APK + AAB
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee build.log
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
+          GRADLE_OPTS: >-
+            -Dorg.gradle.jvmargs=-Xmx4g
+            -Dorg.gradle.daemon=false
+            -Dkotlin.incremental=false
 
-      - name: Build release AAB (Play Store)
-        run: ./gradlew bundleRelease --no-daemon
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-release-${{ github.sha }}
+          path: build.log
+          retention-days: 7
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
