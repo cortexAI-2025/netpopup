@@ -71,11 +71,14 @@ jobs:
 
       # ── Debug APK ─────────────────────────────────────────────────────────────
       - name: Build debug APK
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx3g -XX:MaxMetaspaceSize=512m"
+          GRADLE_OPTS: "-Xmx3g -XX:MaxMetaspaceSize=512m"
         run: |
-          gradle assembleDebug --stacktrace --no-daemon \
-            -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m" \
-            --max-workers=1 2>&1 | tee /tmp/gradle-build.log
-          exit ${PIPESTATUS[0]}
+          set -o pipefail
+          gradle assembleDebug --stacktrace --no-daemon --max-workers=1 \
+            2>&1 | tee /tmp/gradle-build.log
 
       - name: Extract real error on failure
         if: failure()
