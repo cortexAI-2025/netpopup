@@ -29,8 +29,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ubuntu-latest already ships android-34 + build-tools 34.0.0.
-      # Only need to accept licenses; skip sdkmanager installs (they block on prompts).
+      # Handles Gradle distribution download + caching (avoids networkTimeout issues)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: wrapper
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
@@ -40,8 +44,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # google-services.json is gitignored; inject a structurally valid placeholder
-      # so the Gradle plugin parses without error. Firebase calls fail at runtime only.
       - name: Create google-services.json placeholder
         run: |
           cat > app/google-services.json <<'EOF'
@@ -65,15 +67,6 @@ jobs:
             "configuration_version": "1"
           }
           EOF
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
-          restore-keys: gradle-
 
       - name: Build debug APK
         shell: bash
@@ -119,6 +112,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: wrapper
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
@@ -127,15 +125,6 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
-          restore-keys: gradle-
 
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > netpopup-release.jks
