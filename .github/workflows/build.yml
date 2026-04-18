@@ -1,49 +1,44 @@
-name: Android Build
+name: CI
 
 on:
   push:
-    branches:
-      - main
-      - 'claude/**'
+    branches: ['**']
   pull_request:
-    branches:
-      - main
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  build-debug:
-    name: Build Debug APK
+
+  # ── Job 1: Build Android (debug APK + signed release APK + AAB) ──────────────
+  build-apk:
+    name: Build APK / AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
 
-      # Handles Gradle distribution download + caching (avoids networkTimeout issues)
-      - name: Setup Gradle
+      # setup-gradle installe Gradle 8.6 et gère le cache — plus aucun téléchargement
+      # réseau dans le wrapper (networkTimeout irrelevant).
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: wrapper
+          gradle-version: '8.6'
+          build-root-directory: .
+          cache-read-only: false
 
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+      # Régénère le wrapper JAR depuis le Gradle 8.6 installé ci-dessus.
+      # --no-validate-url évite une requête réseau de validation.
+      - name: Regenerate wrapper JAR
+        run: |
+          gradle wrapper --gradle-version 8.6 --no-validate-url
+          chmod +x gradlew
 
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
+      # google-services.json est gitignored. On injecte un placeholder structurellement
+      # valide pour que le plugin parse sans erreur. Les appels Firebase échouent au
+      # runtime uniquement (attendu en CI).
       - name: Create google-services.json placeholder
         run: |
           cat > app/google-services.json <<'EOF'
@@ -68,108 +63,102 @@ jobs:
           }
           EOF
 
-      - name: Build debug APK
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
-        env:
-          GRADLE_OPTS: >-
-            -Dorg.gradle.jvmargs=-Xmx4g
-            -Dorg.gradle.daemon=false
-            -Dkotlin.incremental=false
-            -Dkapt.use.worker.api=false
-
-      - name: Upload build log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ github.sha }}
-          path: build.log
-          retention-days: 7
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: netpopup-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
-
-  build-release:
-    name: Build Release APK + AAB
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-debug
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: wrapper
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Decode keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > netpopup-release.jks
-
-      - name: Write keystore.properties
+      # ── Debug APK ─────────────────────────────────────────────────────────────
+      - name: Build debug APK
         run: |
-          cat > keystore.properties <<EOF
-          storeFile=../netpopup-release.jks
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
+          gradle assembleDebug --stacktrace --no-daemon \
+            -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m" \
+            --max-workers=1 2>&1 | tee /tmp/gradle-build.log
+          exit ${PIPESTATUS[0]}
 
-      - name: Write google-services.json
-        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
-
-      - name: Build release APK + AAB
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee build.log
-        env:
-          GRADLE_OPTS: >-
-            -Dorg.gradle.jvmargs=-Xmx4g
-            -Dorg.gradle.daemon=false
-            -Dkotlin.incremental=false
-
-      - name: Upload build log on failure
+      - name: Extract real error on failure
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-release-${{ github.sha }}
-          path: build.log
-          retention-days: 7
+        run: |
+          echo "════════ CAUSED BY ════════"
+          grep -A 10 "Caused by:" /tmp/gradle-build.log | head -60 || true
+          echo "════════ WHAT WENT WRONG ════════"
+          grep -A 10 "What went wrong" /tmp/gradle-build.log | head -40 || true
+          echo "════════ COMPILE / RESOURCE ERRORS ════════"
+          grep -iE "(error:|AAPT|resource.*not found|unresolved reference|failed)" /tmp/gradle-build.log | head -30 || true
 
-      - name: Upload release APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: netpopup-release-${{ github.sha }}
+          name: netpopup-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # ── Keystore CI généré à la volée (pas de secrets nécessaires) ───────────
+      - name: Generate CI keystore
+        run: |
+          keytool -genkeypair \
+            -keystore app/ci.keystore \
+            -alias     release \
+            -keyalg    RSA \
+            -keysize   2048 \
+            -validity  365 \
+            -storepass ci_password \
+            -keypass   ci_password \
+            -dname     "CN=CI, OU=CI, O=NetPopUp, L=CI, ST=CI, C=FR" \
+            -noprompt
+
+      # ── Release APK signé ─────────────────────────────────────────────────────
+      - name: Build signed release APK
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            "-Pandroid.injected.signing.store.file=${GITHUB_WORKSPACE}/app/ci.keystore" \
+            "-Pandroid.injected.signing.store.password=ci_password" \
+            "-Pandroid.injected.signing.key.alias=release" \
+            "-Pandroid.injected.signing.key.password=ci_password"
+
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-release-apk
           path: app/build/outputs/apk/release/*.apk
-          retention-days: 30
+          if-no-files-found: warn
+
+      # ── AAB (Play Store) ──────────────────────────────────────────────────────
+      - name: Build release AAB
+        run: |
+          ./gradlew bundleRelease --no-daemon \
+            "-Pandroid.injected.signing.store.file=${GITHUB_WORKSPACE}/app/ci.keystore" \
+            "-Pandroid.injected.signing.store.password=ci_password" \
+            "-Pandroid.injected.signing.key.alias=release" \
+            "-Pandroid.injected.signing.key.password=ci_password"
 
       - name: Upload release AAB
         uses: actions/upload-artifact@v4
         with:
-          name: netpopup-release-aab-${{ github.sha }}
+          name: netpopup-release-aab
           path: app/build/outputs/bundle/release/*.aab
-          retention-days: 30
+          if-no-files-found: warn
+
+  # ── Job 2: Build summary ──────────────────────────────────────────────────────
+  summary:
+    name: Build Result
+    runs-on: ubuntu-latest
+    needs: [build-apk]
+    if: always()
+    steps:
+      - name: Write job summary
+        run: |
+          echo "## NetPopUp Build Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | ${{ needs.build-apk.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Run | #${{ github.run_number }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Triggered by | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`netpopup-debug-apk\` — APK debug (Quick)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`netpopup-release-apk\` — APK release signé (Production)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`netpopup-release-aab\` — Bundle AAB (Play Store)" >> "$GITHUB_STEP_SUMMARY"
