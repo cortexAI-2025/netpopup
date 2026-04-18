@@ -30,19 +30,35 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Install required SDK components
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Restore google-services.json (placeholder)
-        # In CI, use the placeholder already committed.
-        # For a real Firebase project, store the real file as a secret:
-        #   Settings → Secrets → GOOGLE_SERVICES_JSON (base64-encoded)
-        # Then uncomment the two lines below and remove this comment block.
-        # run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
-        run: echo "Using committed google-services.json placeholder"
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: gradle-
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -52,10 +68,10 @@ jobs:
           retention-days: 14
 
   build-release:
-    name: Build Release APK (signed)
+    name: Build Release APK + AAB
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Only run on pushes to main (not on PRs — secrets not available on forks)
+    # Only on pushes to main — secrets not available on fork PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-debug
 
@@ -70,15 +86,35 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Install required SDK components
+        run: |
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: gradle-
+
       - name: Decode keystore
-        # Store your keystore as a base64 secret:
-        #   base64 -w 0 netpopup-release.jks | pbcopy
-        # Then add to GitHub Secrets: KEYSTORE_BASE64
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > netpopup-release.jks
+        # Generate with: base64 -w 0 netpopup-release.jks
+        # Add to GitHub Secrets as KEYSTORE_BASE64
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > netpopup-release.jks
 
       - name: Write keystore.properties
         run: |
@@ -90,11 +126,19 @@ jobs:
           EOF
 
       - name: Write google-services.json
-        run: |
-          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
+        # Generate with: base64 -w 0 app/google-services.json
+        # Add to GitHub Secrets as GOOGLE_SERVICES_JSON
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
 
       - name: Build release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
+
+      - name: Build release AAB (Play Store)
+        run: ./gradlew bundleRelease --no-daemon
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
@@ -102,9 +146,6 @@ jobs:
           name: netpopup-release-${{ github.sha }}
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
-
-      - name: Build release AAB (Play Store)
-        run: ./gradlew bundleRelease --no-daemon
 
       - name: Upload release AAB
         uses: actions/upload-artifact@v4
