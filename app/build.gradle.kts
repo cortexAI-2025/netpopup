@@ -4,8 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
-    kotlin("kapt")
 }
 
 android {
@@ -78,9 +78,6 @@ android {
     }
 }
 
-// Allow references to generated code from kapt (Hilt)
-kapt { correctErrorTypes = true }
-
 dependencies {
     // Core
     implementation(libs.androidx.core.ktx)
@@ -102,7 +99,7 @@ dependencies {
 
     // Hilt
     implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
+    ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // Firebase
