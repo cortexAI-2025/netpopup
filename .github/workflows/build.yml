@@ -46,6 +46,45 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Create google-services.json placeholder
+        # google-services.json is gitignored. For debug CI we inject a valid-format
+        # placeholder so the plugin doesn't abort. Firebase calls will fail at runtime
+        # (expected — real credentials come via the GOOGLE_SERVICES_JSON secret in release).
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            cat > app/google-services.json <<'GSJSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "netpopup-placeholder",
+              "storage_bucket": "netpopup-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:00000000000000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.netpopup"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyA-PLACEHOLDER-REPLACE-WITH-REAL-KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          GSJSON
+          fi
+
       - name: Cache Gradle packages
         uses: actions/cache@v4
         with:
@@ -56,15 +95,13 @@ jobs:
           restore-keys: gradle-
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.daemon=false"
 
       - name: Show build errors on failure
         if: failure()
-        run: |
-          echo "=== WHAT WENT WRONG ==="
-          grep -A 5 "What went wrong\|FAILURE\|error:" build.log | head -60 || true
+        run: grep -E "What went wrong|FAILURE|error:|Exception" build.log | head -40 || true
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
