@@ -7,7 +7,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.netpopup.ui.screen.local.LocalChatScreen
-import com.netpopup.ui.screen.private.PrivateChatScreen
+import com.netpopup.ui.screen.privatechat.PrivateChatScreen
 import com.netpopup.ui.screen.rooms.RoomsScreen
 
 /** Sealed route definitions — avoids magic strings scattered across the code. */

@@ -1,4 +1,4 @@
-package com.netpopup.ui.screen.`private`
+package com.netpopup.ui.screen.privatechat
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize

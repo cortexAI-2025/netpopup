@@ -1,4 +1,4 @@
-package com.netpopup.ui.screen.`private`
+package com.netpopup.ui.screen.privatechat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
