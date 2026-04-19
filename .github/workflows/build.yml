@@ -81,15 +81,34 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
-      # ── Debug APK ─────────────────────────────────────────────────────────────
-      - name: Build debug APK
+      # ── Debug APK (4 étapes isolées pour identifier l'erreur exacte) ─────────
+      - name: "Phase 1 — KSP annotation processing"
         shell: bash
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: |
-          gradle kspDebugKotlin --no-daemon --max-workers=1 --stacktrace
-          gradle assembleDebug --no-daemon --max-workers=1 --stacktrace
+        run: gradle kspDebugKotlin --no-daemon --max-workers=1
+
+      - name: "Phase 2 — Kotlin compilation"
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle compileDebugKotlin --no-daemon --max-workers=1
+
+      - name: "Phase 3 — AAPT2 resource linking"
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle processDebugResources --no-daemon --max-workers=1
+
+      - name: "Phase 4 — Assemble debug APK"
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle assembleDebug --no-daemon --max-workers=1
 
 
       - name: Upload debug APK
