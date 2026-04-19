@@ -85,8 +85,8 @@ jobs:
       - name: Build debug APK
         shell: bash
         env:
-          JAVA_OPTS: "-Xmx3g -XX:MaxMetaspaceSize=512m"
-          GRADLE_OPTS: "-Xmx3g -XX:MaxMetaspaceSize=512m"
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: |
           set -o pipefail
           gradle assembleDebug --stacktrace --no-daemon --max-workers=1 \
