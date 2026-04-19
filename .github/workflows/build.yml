@@ -88,18 +88,9 @@ jobs:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: |
-          set -o pipefail
-          gradle assembleDebug --stacktrace --no-daemon --max-workers=1 \
-            2>&1 | tee /tmp/gradle-build.log
+          gradle kspDebugKotlin --no-daemon --max-workers=1 --stacktrace
+          gradle assembleDebug --no-daemon --max-workers=1 --stacktrace
 
-      - name: Show build log on failure
-        if: failure()
-        run: |
-          echo "════════ BUILD LOG — DÉBUT (300 lignes) ════════"
-          head -300 /tmp/gradle-build.log || true
-          echo ""
-          echo "════════ BUILD LOG — FIN (100 lignes) ════════"
-          tail -100 /tmp/gradle-build.log || true
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
