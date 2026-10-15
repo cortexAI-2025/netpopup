@@ -1,6 +1,9 @@
 package com.netpopup.data.repository
 
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import com.netpopup.data.model.Room
 import com.netpopup.data.model.RoomType
 import com.netpopup.util.ModerationUtils
@@ -43,8 +46,7 @@ class RoomRepository @Inject constructor(
             zoneId = zoneId,
             createdAt = System.currentTimeMillis()
         )
-        docRef.set(room.toMap()).await()
-        return room
+        return createOrReadExisting(docRef, room)
     }
 
     // ── Private rooms ─────────────────────────────────────────────────────────
@@ -54,7 +56,7 @@ class RoomRepository @Inject constructor(
      * Retries up to 3 times if a collision occurs (extremely rare).
      */
     suspend fun createPrivateRoom(): Room {
-        repeat(3) { attempt ->
+        repeat(3) {
             val code = ModerationUtils.generateRoomCode()
             val docRef = roomsCollection.document(code)
             val existing = docRef.get().await()
@@ -66,8 +68,13 @@ class RoomRepository @Inject constructor(
                 code = code,
                 createdAt = System.currentTimeMillis()
             )
-            docRef.set(room.toMap()).await()
-            return room
+            try {
+                docRef.set(room.toMap()).await()
+                return room
+            } catch (e: FirebaseFirestoreException) {
+                // Someone created the same code between our read and write → retry
+                if (e.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw e
+            }
         }
         error("Could not generate a unique room code after 3 attempts")
     }
@@ -79,6 +86,22 @@ class RoomRepository @Inject constructor(
     suspend fun joinPrivateRoom(code: String): Room? {
         val snapshot = roomsCollection.document(code.uppercase()).get().await()
         return if (snapshot.exists()) snapshot.toRoom() else null
+    }
+
+    /**
+     * Writes [room] to [docRef]. If another client created the document in the
+     * meantime, the security rules reject our write (updates are forbidden), so
+     * we fall back to reading the server copy.
+     */
+    private suspend fun createOrReadExisting(docRef: DocumentReference, room: Room): Room {
+        return try {
+            docRef.set(room.toMap()).await()
+            room
+        } catch (e: FirebaseFirestoreException) {
+            if (e.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw e
+            val existing = docRef.get(Source.SERVER).await()
+            if (existing.exists()) existing.toRoom() else throw e
+        }
     }
 
     // ── Serialization helpers ─────────────────────────────────────────────────

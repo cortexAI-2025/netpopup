@@ -12,22 +12,29 @@ import com.google.firebase.messaging.RemoteMessage
 import com.netpopup.MainActivity
 import com.netpopup.R
 import com.netpopup.data.local.UserPreferences
+import com.netpopup.data.push.ActiveRoomTracker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
  * Handles incoming FCM push notifications.
  *
- * Expected data payload:
- *   { "title": "Eagle_7312", "body": "Hey everyone!" }
+ * Sent by the `notifyOnMessage` Cloud Function as a data-only message on the
+ * room topic ("room_<roomId>"):
+ *   { "roomId": "XK7B2Q", "roomType": "PRIVATE", "senderId": "<uid>",
+ *     "title": "Eagle_7312", "body": "Hey everyone!" }
  *
- * When the app is in the foreground the notification is shown manually here.
- * When in the background Firebase shows it automatically.
+ * Data-only messages always reach [onMessageReceived] (foreground and
+ * background), so the filtering below applies in every case:
+ *   - notifications disabled in Settings,
+ *   - own messages,
+ *   - the room currently on screen.
  */
 @AndroidEntryPoint
 class NetPopUpMessagingService : FirebaseMessagingService() {
@@ -38,34 +45,48 @@ class NetPopUpMessagingService : FirebaseMessagingService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
-        // Persist the latest FCM token — send it to your backend if you need
-        // server-side push targeting (e.g. FCM topic subscriptions).
+        // Topic subscriptions survive token refreshes; the token is kept for
+        // future direct targeting from a backend.
         serviceScope.launch {
             userPreferences.saveFcmToken(token)
         }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        val title = remoteMessage.data["title"]
+        val data     = remoteMessage.data
+        val roomId   = data["roomId"]
+        val roomType = data["roomType"]
+        val senderId = data["senderId"]
+
+        if (roomId != null && roomId == ActiveRoomTracker.activeRoomId) return
+
+        // onMessageReceived runs on a background thread — blocking is fine here
+        val (enabled, selfId) = runBlocking {
+            userPreferences.isNotificationsEnabled() to userPreferences.getUserId()
+        }
+        if (!enabled) return
+        if (senderId != null && senderId == selfId) return
+        if (senderId != null && runBlocking { userPreferences.isUserBlocked(senderId) }) return
+
+        val title = data["title"]
             ?: remoteMessage.notification?.title
             ?: "NetPopUp"
-        val body  = remoteMessage.data["body"]
+        val body  = data["body"]
             ?: remoteMessage.notification?.body
             ?: ""
 
-        showNotification(title, body)
+        showNotification(title, body, roomId, roomType)
     }
 
     // ── Notification ──────────────────────────────────────────────────────────
 
-    private fun showNotification(title: String, body: String) {
-        val channelId = "netpopup_messages"
-        val manager   = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun showNotification(title: String, body: String, roomId: String?, roomType: String?) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         // Create notification channel (required on Android 8+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId,
+                CHANNEL_ID,
                 "Messages",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply { description = "New message notifications" }
@@ -74,26 +95,39 @@ class NetPopUpMessagingService : FirebaseMessagingService() {
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra(EXTRA_ROOM_ID, roomId)
+            putExtra(EXTRA_ROOM_TYPE, roomType)
         }
+        // One PendingIntent per room so extras are not overwritten between rooms
+        val requestCode = roomId?.hashCode() ?: 0
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
+            this, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(R.drawable.ic_stat_netpopup)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        manager.notify(System.currentTimeMillis().toInt(), notification)
+        // One notification per room: a new message replaces the previous one
+        manager.notify(roomId ?: TAG_GENERIC, 0, notification)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.coroutineContext.cancel()
+    }
+
+    companion object {
+        const val CHANNEL_ID      = "netpopup_messages"
+        const val EXTRA_ROOM_ID   = "com.netpopup.extra.ROOM_ID"
+        const val EXTRA_ROOM_TYPE = "com.netpopup.extra.ROOM_TYPE"
+        private const val TAG_GENERIC = "netpopup"
     }
 }

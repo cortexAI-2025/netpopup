@@ -12,15 +12,17 @@ com.netpopup/
 │   ├── model/          ← Plain data classes (User, Message, Room)
 │   ├── local/          ← DataStore (UserPreferences)
 │   └── repository/     ← Firebase data sources (Auth, Messages, Rooms)
+│   ├── push/           ← FCM topic subscriptions, active-room tracker
 ├── di/                 ← Hilt modules
 ├── service/            ← FCM push notification handler
 ├── ui/
 │   ├── theme/          ← Dark color scheme, typography
-│   ├── navigation/     ← NavGraph (3 destinations)
+│   ├── navigation/     ← NavGraph (4 destinations)
 │   ├── screen/
 │   │   ├── local/      ← Geo chatroom screen + ViewModel
-│   │   ├── private/    ← Private room chat screen + ViewModel
-│   │   └── rooms/      ← Create / Join room screen + ViewModel
+│   │   ├── privatechat/← Private room chat screen + ViewModel
+│   │   ├── rooms/      ← Create / Join / recent rooms + ViewModel
+│   │   └── settings/   ← Username, notifications, blocked users
 │   └── component/      ← Reusable Compose components
 └── util/               ← GeoUtils, UsernameGenerator, ModerationUtils
 ```
@@ -72,6 +74,16 @@ In the Firebase Console → Firestore → **TTL policies** → Add TTL policy:
 
 This auto-deletes expired messages server-side at no extra cost.
 
+### 6. Deploy the push notification function
+
+Push notifications are sent by a Cloud Function (`functions/index.js`) that
+fires on every new message. Cloud Functions require the **Blaze** plan.
+
+```bash
+cd functions && npm install && cd ..
+firebase deploy --only functions
+```
+
 ---
 
 ## Build & Run
@@ -110,6 +122,7 @@ cp /path/to/google-services.json app/google-services.json
 - Generate a 6-character alphanumeric invite code
 - Join any room by entering its code
 - Copy code to clipboard with one tap
+- Rooms you created or joined are listed under **Your rooms** (tap to reopen, ✕ to leave)
 
 ### Messaging
 - Text only (500 char limit, enforced client + Firestore rules)
@@ -118,13 +131,23 @@ cp /path/to/google-services.json app/google-services.json
 
 ### Moderation
 - Long-press any message → **Report** or **Block user**
-- Blocked users filtered locally (DataStore)
+- Long-press your own message → **Delete**
+- Blocked users filtered locally (DataStore), unblock from **Settings**
 - Reported messages flagged in Firestore for admin review
 - Basic banned-word filter (`ModerationUtils`)
 
 ### Push Notifications
-- FCM delivers new message notifications when the app is in the background
+- `notifyOnMessage` Cloud Function publishes each new message to the FCM topic `room_<roomId>`
+- The app subscribes to its current geo zone (previous zone is unsubscribed) and to every private room joined
+- Data-only messages, filtered on the device: own messages, blocked users and the room on screen are skipped
+- Tapping a notification opens the room; can be turned off in **Settings**
+- Android 13+: notification permission requested at first launch
 - Notification channel: `netpopup_messages` (high importance)
+
+### Settings
+- Generate a new anonymous username (applies to new messages)
+- Enable / disable push notifications
+- List and unblock blocked users
 
 ---
 
@@ -181,10 +204,18 @@ Each zone cell is ~1.1 km wide — large enough for a neighbourhood, small enoug
 | Feature | Where to add |
 |---|---|
 | Server-side rate limiting | Firebase Cloud Functions (trigger on `messages` create) |
-| Push to specific users | Store FCM token in `/users/{uid}` doc; target from Cloud Functions |
+| Push to specific users | Store FCM token in `/users/{uid}` doc; target from Cloud Functions (room pushes already use topics) |
 | Admin kick/ban | Cloud Function + Firestore admin collection |
 | Manual zone switch | Expose `zoneId` param in `LocalChatViewModel.initialize()` |
 | Message search | Firestore `array-contains` on tokenised words (or Algolia) |
+
+---
+
+## Tests
+
+```bash
+./gradlew testDebugUnitTest   # GeoUtils, ModerationUtils, UsernameGenerator
+```
 
 ---
 

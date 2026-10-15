@@ -36,7 +36,9 @@ private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 /**
  * A single message row.
  *
- * Long-press reveals a context menu for "Report" and "Block user" actions.
+ * Long-press reveals a context menu:
+ *  - other users' messages → "Report" and "Block user"
+ *  - own messages          → "Delete"
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -45,6 +47,7 @@ fun MessageBubble(
     isSelf: Boolean,
     onReport: () -> Unit,
     onBlockUser: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -99,11 +102,16 @@ fun MessageBubble(
             }
 
             // Context menu (long-press)
-            if (!isSelf) {
-                DropdownMenu(
-                    expanded        = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
+            DropdownMenu(
+                expanded        = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                if (isSelf) {
+                    DropdownMenuItem(
+                        text    = { Text("Delete message") },
+                        onClick = { showMenu = false; onDelete() }
+                    )
+                } else {
                     DropdownMenuItem(
                         text    = { Text("Report message") },
                         onClick = { showMenu = false; onReport() }
