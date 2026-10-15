@@ -33,6 +33,7 @@ import com.netpopup.ui.component.ChatInputBar
 import com.netpopup.ui.component.MessageBubble
 import com.netpopup.ui.component.NetPopUpTopBar
 import com.netpopup.ui.theme.Primary
+import com.netpopup.ui.util.ActiveRoomEffect
 import com.netpopup.ui.util.rememberFeedbackManager
 import com.netpopup.ui.util.rememberScrollManager
 
@@ -54,6 +55,9 @@ fun PrivateChatScreen(
     val clipboardManager = LocalClipboardManager.current
     val scrollManager   = rememberScrollManager()
     val feedbackManager = rememberFeedbackManager()
+
+    // ── Notifications : pas de push pour la room affichée ─────────────────────
+    ActiveRoomEffect(uiState.room?.id)
 
     // ── Scroll + Haptic ───────────────────────────────────────────────────────
     var lastSeenCount by remember { mutableIntStateOf(0) }
@@ -91,7 +95,10 @@ fun PrivateChatScreen(
                 onBack   = onBack,
                 actions  = {
                     val code = uiState.room?.code ?: roomId
-                    IconButton(onClick = { clipboardManager.setText(AnnotatedString(code)) }) {
+                    IconButton(onClick = {
+                        clipboardManager.setText(AnnotatedString(code))
+                        viewModel.onCodeCopied()
+                    }) {
                         Icon(Icons.Filled.ContentCopy, "Copy code", tint = Primary)
                     }
                 }
@@ -128,7 +135,8 @@ fun PrivateChatScreen(
                             message     = message,
                             isSelf      = message.userId == uiState.currentUser?.id,
                             onReport    = { viewModel.reportMessage(message.id) },
-                            onBlockUser = { viewModel.blockUser(message.userId) }
+                            onBlockUser = { viewModel.blockUser(message.userId, message.username) },
+                            onDelete    = { viewModel.deleteMessage(message.id) }
                         )
                     }
                 }

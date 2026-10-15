@@ -1,15 +1,18 @@
 package com.netpopup.ui.screen.local
 
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,12 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netpopup.ui.component.ChatInputBar
 import com.netpopup.ui.component.MessageBubble
 import com.netpopup.ui.component.NetPopUpTopBar
 import com.netpopup.ui.theme.Primary
+import com.netpopup.ui.util.ActiveRoomEffect
 import com.netpopup.ui.util.rememberFeedbackManager
 import com.netpopup.ui.util.rememberScrollManager
 
@@ -51,6 +57,7 @@ import com.netpopup.ui.util.rememberScrollManager
 @Composable
 fun LocalChatScreen(
     onNavigateToRooms: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     viewModel: LocalChatViewModel = hiltViewModel()
 ) {
     val uiState         by viewModel.uiState.collectAsState()
@@ -59,13 +66,23 @@ fun LocalChatScreen(
     val feedbackManager = rememberFeedbackManager()      // toda haptique centralisée
 
     // ── Location permission ───────────────────────────────────────────────────
+    // Le ViewModel attend ce résultat avant de calculer la zone : sans ça, le
+    // premier lancement tombait toujours dans la zone par défaut.
+    val context = LocalContext.current
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* résultat géré dans le ViewModel */ }
+    ) { granted -> viewModel.onLocationPermissionResult(granted) }
 
     LaunchedEffect(Unit) {
-        locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val alreadyGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) viewModel.onLocationPermissionResult(true)
+        else locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
     }
+
+    // ── Notifications : pas de push pour la zone affichée ─────────────────────
+    ActiveRoomEffect(uiState.room?.id)
 
     // ── Scroll + Haptic ───────────────────────────────────────────────────────
     // lastSeenCount sert uniquement à détecter « nouveau message » vs
@@ -106,8 +123,13 @@ fun LocalChatScreen(
                 showBrandLogo = true,           // logo secondaire (bulle + NetPopUp)
                 subtitle      = if (uiState.zoneDisplay.isNotBlank()) "Zone ${uiState.zoneDisplay}" else null,
                 actions       = {
-                    IconButton(onClick = onNavigateToRooms) {
-                        Icon(Icons.Filled.Lock, "Private Rooms", tint = Primary)
+                    Row {
+                        IconButton(onClick = onNavigateToRooms) {
+                            Icon(Icons.Filled.Lock, "Private Rooms", tint = Primary)
+                        }
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Filled.Settings, "Settings", tint = Primary)
+                        }
                     }
                 }
             )
@@ -143,7 +165,8 @@ fun LocalChatScreen(
                             message     = message,
                             isSelf      = message.userId == uiState.currentUser?.id,
                             onReport    = { viewModel.reportMessage(message.id) },
-                            onBlockUser = { viewModel.blockUser(message.userId) }
+                            onBlockUser = { viewModel.blockUser(message.userId, message.username) },
+                            onDelete    = { viewModel.deleteMessage(message.id) }
                         )
                     }
                 }

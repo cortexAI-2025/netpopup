@@ -1,6 +1,7 @@
 package com.netpopup.ui.screen.rooms
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,11 +10,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -40,6 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.netpopup.ui.component.NetPopUpTopBar
 import com.netpopup.ui.theme.Outline
 import com.netpopup.ui.theme.Primary
+import com.netpopup.ui.theme.SurfaceVar
 import com.netpopup.ui.theme.TextPrimary
 import com.netpopup.ui.theme.TextSecondary
 
@@ -54,6 +62,8 @@ import com.netpopup.ui.theme.TextSecondary
  *  │  ─────────  or  ──────────     │
  *  │  [  Enter room code  ]         │
  *  │  [ Join Room ]       (button)  │
+ *  │  Your rooms                    │
+ *  │  XK7B2Q                     ✕  │
  *  └────────────────────────────────┘
  */
 @Composable
@@ -63,6 +73,7 @@ fun RoomsScreen(
     viewModel: RoomsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val recentRooms by viewModel.recentRooms.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when a room is created / joined
@@ -92,8 +103,9 @@ fun RoomsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.Center,
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
@@ -196,6 +208,50 @@ fun RoomsScreen(
                     color      = MaterialTheme.colorScheme.onPrimary
                 )
             }
+
+            // ── Recent rooms ──────────────────────────────────────────────────
+            if (recentRooms.isNotEmpty()) {
+                Spacer(Modifier.height(40.dp))
+                Text(
+                    text     = "Your rooms",
+                    color    = TextSecondary,
+                    style    = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                recentRooms.forEach { code ->
+                    RecentRoomRow(
+                        code    = code,
+                        onOpen  = { viewModel.openRoom(code) },
+                        onLeave = { viewModel.leaveRoom(code) }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentRoomRow(code: String, onOpen: () -> Unit, onLeave: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SurfaceVar, RoundedCornerShape(12.dp))
+            .clickable(onClick = onOpen)
+            .padding(start = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text       = code,
+            color      = TextPrimary,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 4.sp,
+            modifier   = Modifier.weight(1f)
+        )
+        IconButton(onClick = onLeave) {
+            Icon(Icons.Filled.Close, contentDescription = "Leave room $code", tint = TextSecondary)
         }
     }
 }

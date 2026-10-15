@@ -13,16 +13,19 @@ import com.netpopup.data.local.UserPreferences
 import com.netpopup.data.model.Message
 import com.netpopup.data.model.Room
 import com.netpopup.data.model.User
+import com.netpopup.data.push.PushRepository
 import com.netpopup.data.repository.AuthRepository
 import com.netpopup.data.repository.MessageRepository
 import com.netpopup.data.repository.RoomRepository
 import com.netpopup.util.GeoUtils
 import com.netpopup.util.ModerationUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -43,9 +46,11 @@ data class LocalChatUiState(
  *
  * On creation it:
  *   1. Signs in anonymously (or restores an existing session).
- *   2. Requests coarse location from the FusedLocationProviderClient.
+ *   2. Waits for the screen to report the location permission result, then
+ *      requests a coarse location from the FusedLocationProviderClient.
  *   3. Computes a zone ID and retrieves / creates the matching Firestore room.
- *   4. Opens a Firestore snapshot listener and emits messages as a Flow.
+ *   4. Subscribes to the room's push topic (and drops the previous zone's).
+ *   5. Opens a Firestore snapshot listener and emits messages as a Flow.
  *
  * Rate-limit: 1 message per second, enforced client-side.
  */
@@ -55,7 +60,8 @@ class LocalChatViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val messageRepository: MessageRepository,
     private val roomRepository: RoomRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val pushRepository: PushRepository
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(LocalChatUiState())
@@ -63,6 +69,9 @@ class LocalChatViewModel @Inject constructor(
 
     /** Timestamp of the last successfully sent message (rate-limit guard). */
     private var lastSentAt = 0L
+
+    /** Completed by [onLocationPermissionResult] once the user has answered. */
+    private val locationPermission = CompletableDeferred<Boolean>()
 
     init {
         viewModelScope.launch { initialize() }
@@ -76,7 +85,9 @@ class LocalChatViewModel @Inject constructor(
             val user = authRepository.ensureSignedIn()
             _uiState.update { it.copy(currentUser = user) }
 
-            // 2. Resolve geo zone
+            // 2. Resolve geo zone (only once the permission dialog is answered,
+            //    otherwise the first launch would always land in the default zone)
+            locationPermission.await()
             val location = resolveLocation()
             val zoneId = if (location != null) {
                 GeoUtils.computeZoneId(location.latitude, location.longitude)
@@ -96,7 +107,10 @@ class LocalChatViewModel @Inject constructor(
                 it.copy(room = room, zoneDisplay = zoneDisplay, isLoading = false)
             }
 
-            // 4. Observe messages + blocked users simultaneously
+            // 4. Push notifications for this zone (best-effort)
+            viewModelScope.launch { pushRepository.subscribeToLocalRoom(room.id) }
+
+            // 5. Observe messages + blocked users simultaneously
             combine(
                 messageRepository.observeMessages(room.id),
                 userPreferences.blockedUsersFlow
@@ -137,6 +151,11 @@ class LocalChatViewModel @Inject constructor(
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
+    /** Called by the screen with the permission result (or `true` if already granted). */
+    fun onLocationPermissionResult(granted: Boolean) {
+        locationPermission.complete(granted)
+    }
+
     fun sendMessage(content: String) {
         val now = System.currentTimeMillis()
         if (now - lastSentAt < 1_000L) {
@@ -163,10 +182,12 @@ class LocalChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // The username can be changed from Settings while this screen lives
+                val username = userPreferences.usernameFlow.first() ?: user.username
                 messageRepository.sendMessage(
                     roomId   = roomId,
                     userId   = user.id,
-                    username = user.username,
+                    username = username,
                     content  = sanitized
                 )
             } catch (e: Exception) {
@@ -186,9 +207,19 @@ class LocalChatViewModel @Inject constructor(
         }
     }
 
-    fun blockUser(userId: String) {
+    fun deleteMessage(messageId: String) {
         viewModelScope.launch {
-            userPreferences.blockUser(userId)
+            try {
+                messageRepository.deleteMessage(messageId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Delete failed") }
+            }
+        }
+    }
+
+    fun blockUser(userId: String, username: String) {
+        viewModelScope.launch {
+            userPreferences.blockUser(userId, username)
         }
     }
 

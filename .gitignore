@@ -36,3 +36,6 @@ Thumbs.db
 # Kotlin / Java
 *.class
 *.log
+
+# Cloud Functions
+functions/node_modules/

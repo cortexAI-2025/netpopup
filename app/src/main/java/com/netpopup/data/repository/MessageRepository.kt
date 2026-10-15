@@ -54,8 +54,12 @@ class MessageRepository @Inject constructor(
                         close(error)
                         return@addSnapshotListener
                     }
+                    // The query bound is fixed at subscription time; drop messages
+                    // that expired since then (server TTL deletes them later).
+                    val cutoff = System.currentTimeMillis()
                     val messages = snapshot?.documents
                         ?.mapNotNull { it.toMessage() }
+                        ?.filter { it.expiresAt > cutoff }
                         ?: emptyList()
                     trySend(messages)
                 }
@@ -99,7 +103,7 @@ class MessageRepository @Inject constructor(
     }
 
     /**
-     * Deletes a message by ID (admin / room-owner action).
+     * Deletes a message by ID. Firestore rules only allow the author to do this.
      */
     suspend fun deleteMessage(messageId: String) {
         messagesCollection.document(messageId).delete().await()

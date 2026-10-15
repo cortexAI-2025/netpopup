@@ -15,15 +15,38 @@ service cloud.firestore {
     }
 
     // Validate an incoming message write
+    //  - the room must exist
+    //  - timestamp within ±5 min of server time (tolerates clock skew)
+    //  - expiresAt at most 1 h (+ skew margin) after timestamp — Message.TTL_MS
     function validMessage() {
       let msg = request.resource.data;
+      let skewMs = 5 * 60 * 1000;
       return msg.keys().hasAll(['id','roomId','userId','username','content','timestamp','expiresAt'])
         && msg.content is string
         && msg.content.size() > 0
         && msg.content.size() <= 500
+        && msg.username is string
+        && msg.username.size() > 0
+        && msg.username.size() <= 32
         && msg.userId == request.auth.uid
         && msg.timestamp is int
-        && msg.expiresAt is int;
+        && msg.expiresAt is int
+        && msg.timestamp > request.time.toMillis() - skewMs
+        && msg.timestamp < request.time.toMillis() + skewMs
+        && msg.expiresAt > msg.timestamp
+        && msg.expiresAt <= msg.timestamp + 60 * 60 * 1000 + skewMs
+        && msg.get('reported', false) == false
+        && exists(/databases/$(database)/documents/rooms/$(msg.roomId));
+    }
+
+    // Validate an incoming room creation
+    function validRoom(roomId) {
+      let room = request.resource.data;
+      return room.keys().hasAll(['id','type','zoneId','code','createdAt'])
+        && room.id == roomId
+        && room.type in ['LOCAL', 'PRIVATE']
+        && (room.type != 'LOCAL'   || room.zoneId == roomId)
+        && (room.type != 'PRIVATE' || room.code == roomId);
     }
 
     // ── Rooms ─────────────────────────────────────────────────────────────────
@@ -33,8 +56,7 @@ service cloud.firestore {
 
       // Rooms are created by the client but only if the document doesn't exist
       // (prevents overwriting existing rooms)
-      allow create: if isAuthenticated()
-        && request.resource.data.keys().hasAll(['id','type','zoneId','code','createdAt']);
+      allow create: if isAuthenticated() && validRoom(roomId);
 
       // No updates or deletes from the client
       allow update, delete: if false;

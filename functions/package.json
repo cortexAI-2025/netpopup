@@ -1,0 +1,17 @@
+{
+  "name": "netpopup-functions",
+  "description": "NetPopUp Cloud Functions — push notifications for new messages",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^5.0.1"
+  }
+}

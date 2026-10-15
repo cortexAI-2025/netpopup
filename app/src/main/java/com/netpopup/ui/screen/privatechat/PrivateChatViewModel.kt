@@ -7,6 +7,7 @@ import com.netpopup.data.local.UserPreferences
 import com.netpopup.data.model.Message
 import com.netpopup.data.model.Room
 import com.netpopup.data.model.User
+import com.netpopup.data.push.PushRepository
 import com.netpopup.data.repository.AuthRepository
 import com.netpopup.data.repository.MessageRepository
 import com.netpopup.data.repository.RoomRepository
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,7 +43,8 @@ class PrivateChatViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val messageRepository: MessageRepository,
     private val roomRepository: RoomRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val pushRepository: PushRepository
 ) : ViewModel() {
 
     private val roomId: String = checkNotNull(savedStateHandle["roomId"])
@@ -65,6 +68,10 @@ class PrivateChatViewModel @Inject constructor(
                 ?: throw IllegalStateException("Room $roomId not found")
 
             _uiState.update { it.copy(room = room, isLoading = false) }
+
+            // Remember the room for the Rooms list + receive its notifications
+            userPreferences.addRecentRoom(room.code.ifBlank { room.id })
+            viewModelScope.launch { pushRepository.subscribeToRoom(room.id) }
 
             combine(
                 messageRepository.observeMessages(room.id),
@@ -107,10 +114,11 @@ class PrivateChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                val username = userPreferences.usernameFlow.first() ?: user.username
                 messageRepository.sendMessage(
                     roomId   = rId,
                     userId   = user.id,
-                    username = user.username,
+                    username = username,
                     content  = sanitized
                 )
             } catch (e: Exception) {
@@ -126,9 +134,18 @@ class PrivateChatViewModel @Inject constructor(
         }
     }
 
-    fun blockUser(userId: String) {
-        viewModelScope.launch { userPreferences.blockUser(userId) }
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            runCatching { messageRepository.deleteMessage(messageId) }
+                .onFailure { _uiState.update { it.copy(error = "Delete failed") } }
+        }
     }
+
+    fun blockUser(userId: String, username: String) {
+        viewModelScope.launch { userPreferences.blockUser(userId, username) }
+    }
+
+    fun onCodeCopied() = _uiState.update { it.copy(error = "Room code copied") }
 
     fun clearError() = _uiState.update { it.copy(error = null) }
 }
