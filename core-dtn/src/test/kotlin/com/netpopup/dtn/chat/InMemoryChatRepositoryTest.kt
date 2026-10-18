@@ -1,6 +1,10 @@
 package com.netpopup.dtn.chat
 
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -46,6 +50,22 @@ class InMemoryChatRepositoryTest {
         repo.sendText(local, "éphémère")
         clock += MessageRules.DEFAULT_LIFETIME_MS + 1
         assertTrue(repo.observeMessages(local).first().isEmpty())
+    }
+
+    @Test
+    fun `a collected list drops a message when it expires`() = runTest {
+        // Horloge du dépôt = temps virtuel du test
+        val timed = InMemoryChatRepository(now = { testScheduler.currentTime })
+        val emissions = mutableListOf<List<ChatMessage>>()
+        backgroundScope.launch { timed.observeMessages(local).toList(emissions) }
+
+        timed.sendText(local, "éphémère")
+        runCurrent()
+        assertEquals(1, emissions.last().size)
+
+        advanceTimeBy(MessageRules.DEFAULT_LIFETIME_MS + 1)
+        runCurrent()
+        assertTrue(emissions.last().isEmpty())
     }
 
     @Test
@@ -114,6 +134,17 @@ class InMemoryChatRepositoryTest {
         val ids = repo.observeConversations().first().map { it.id }
         assertEquals(listOf(local), ids)
         assertTrue(repo.observeMessages(invite.conversationId).first().isEmpty())
+    }
+
+    @Test
+    fun `leaving a room drops its pending join requests`() = runTest {
+        val kept = repo.createRoom("Gardée")
+        val left = repo.createRoom("Quittée")
+        val keptRequest = repo.simulateJoinRequest(kept.conversationId)
+        repo.simulateJoinRequest(left.conversationId)
+
+        repo.leave(left.conversationId)
+        assertEquals(listOf(keptRequest), repo.observeJoinRequests().first())
     }
 
     /** `inline` : le bloc peut appeler des fonctions `suspend` depuis `runTest`. */

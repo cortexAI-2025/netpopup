@@ -20,7 +20,10 @@ interface ChatRepository {
     /** Conversations de l'appareil ; la room locale publique est toujours présente. */
     fun observeConversations(): Flow<List<Conversation>>
 
-    /** Messages non expirés d'une conversation, du plus ancien au plus récent. */
+    /**
+     * Messages non expirés d'une conversation, du plus ancien au plus récent.
+     * La liste est ré-émise quand un message expire, même si rien d'autre ne change.
+     */
     fun observeMessages(conversationId: ConversationId): Flow<List<ChatMessage>>
 
     /**
@@ -62,7 +65,10 @@ interface ChatRepository {
 
     suspend fun rejectJoinRequest(requestId: String)
 
-    /** Quitte une room ou supprime une conversation 1:1. Sans effet sur la room locale. */
+    /**
+     * Quitte une room ou supprime une conversation 1:1, avec ses messages et les
+     * demandes d'accès reçues pour elle. Sans effet sur la room locale.
+     */
     suspend fun leave(conversationId: ConversationId)
 }
 

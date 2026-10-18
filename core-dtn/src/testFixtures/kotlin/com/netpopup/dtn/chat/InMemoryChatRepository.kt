@@ -1,10 +1,13 @@
 package com.netpopup.dtn.chat
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlin.random.Random
 
@@ -37,12 +40,19 @@ class InMemoryChatRepository(
 
     override fun observeConversations(): Flow<List<Conversation>> = conversations
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeMessages(conversationId: ConversationId): Flow<List<ChatMessage>> =
-        messages.map { all ->
-            val t = now()
-            all.filter { it.conversationId == conversationId && it.expiresAt > t }
-                .sortedBy { it.sentAt }
-        }
+        messages.transformLatest { all ->
+            // Ré-émet à chaque expiration, même si rien d'autre ne change.
+            while (true) {
+                val t = now()
+                val live = all.filter { it.conversationId == conversationId && it.expiresAt > t }
+                    .sortedBy { it.sentAt }
+                emit(live)
+                val nextExpiry = live.minOfOrNull { it.expiresAt } ?: break
+                delay(nextExpiry - t)
+            }
+        }.distinctUntilChanged()
 
     override suspend fun sendText(conversationId: ConversationId, body: String): ChatMessage {
         requireConversation(conversationId)
@@ -105,6 +115,7 @@ class InMemoryChatRepository(
         if (conversationId == LOCAL_ID) return
         conversations.update { list -> list.filterNot { it.id == conversationId } }
         messages.update { all -> all.filterNot { it.conversationId == conversationId } }
+        joinRequests.update { list -> list.filterNot { it.conversationId == conversationId } }
         roomCodes.values.remove(conversationId)
     }
 
