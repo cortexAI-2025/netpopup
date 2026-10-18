@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId   = "com.netpopup"
-        minSdk          = 24
+        minSdk          = 29
         targetSdk       = 34
         versionCode     = 1
         versionName     = "1.0.0"
@@ -79,6 +79,11 @@ android {
 }
 
 dependencies {
+    // Mesh DTN
+    implementation(project(":core-dtn"))
+    implementation(project(":core-crypto"))
+    implementation(project(":transport-nearby"))
+
     // Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
