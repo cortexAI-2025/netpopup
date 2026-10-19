@@ -4,9 +4,15 @@
 > · À réviser à chaque changement du format d'enveloppe, du protocole de session
 > ou de la crypto.
 
-NetPopUp v0 protège le **contenu** des messages et l'**appartenance aux rooms
+> **Conception cible, pas état actuel.** Ce document décrit les protections que
+> le mesh v0 doit apporter. Aucune n'est encore implémentée : l'app actuelle est
+> le MVP Firebase, qui envoie contenu, pseudo et identifiant en clair à Firestore,
+> sans chiffrement de bout en bout, sans SQLCipher ni `FLAG_SECURE`. Une mitigation
+> n'est effective qu'une fois l'issue citée en regard livrée et fusionnée.
+
+Le mesh v0 doit protéger le **contenu** des messages et l'**appartenance aux rooms
 privées** contre les relais, les observateurs radio et un appareil volé verrouillé.
-Il ne protège pas les **métadonnées radio** (qui est à portée de qui, quand, avec
+Il ne protégera pas les **métadonnées radio** (qui est à portée de qui, quand, avec
 quel volume de trafic), ni la **room locale**, publique par conception. Ce document
 dit qui peut voir quoi, ce qui l'en empêche, et ce qui reste assumé.
 
@@ -80,7 +86,7 @@ dit qui peut voir quoi, ce qui l'en empêche, et ce qui reste assumé.
 
 ## 6. Menaces et mitigations
 
-Statut : **M** mitigée · **P** partiellement mitigée · **A** acceptée en v0.
+Statut **de conception**, une fois l'issue citée livrée : **M** mitigée · **P** partiellement mitigée · **A** acceptée en v0. Aucune ligne n'est encore implémentée.
 
 ### Confidentialité
 
@@ -131,7 +137,7 @@ Statut : **M** mitigée · **P** partiellement mitigée · **A** acceptée en v0
 |---|---|---|---|---|---|
 | T-29 | Suivi de présence et de déplacements par la radio | A2 | Noms d'advertising aléatoires renouvelés à chaque cycle ; adresses Bluetooth aléatoires gérées par Android (selon le constructeur). Être à portée reste observable | mesh-08 (#9) | A |
 | T-30 | Inférence du graphe social par corrélation de présence et de timing | A1, A2 | Aucune en v0 au-delà de l'anonymat des pairs et des étiquettes tournantes | — | A |
-| T-31 | Longueur des messages | A1 | Remplissage du contenu à 256, 512 ou 1 024 octets avant chiffrement | mesh-04/09 (#5, #10) | M |
+| T-31 | Longueur des messages | A1 | Remplissage du contenu à 256, 512 ou 1 024 octets avant chiffrement. Reste visible : la classe de taille (≤ 256, ≤ 512 ou ≤ 1 024 octets) | mesh-04/09 (#5, #10) | P |
 | T-32 | Un `ACK` révèle aux relais quel message a été livré | A1 | Accepté : il ne révèle ni l'émetteur ni le destinataire | mesh-12 (#13) | A |
 | T-33 | Le serveur Internet compte l'activité par étiquette et par heure | A8 | Aucun identifiant en clair ; documenté dans l'UI et la politique de confidentialité | mesh-24 (#25) | A |
 
