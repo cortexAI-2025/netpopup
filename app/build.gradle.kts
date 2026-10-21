@@ -75,6 +75,8 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // Variante de test de libsignal (~65 Mo par ABI) : inutile dans l'application livrée
+        jniLibs { excludes += "**/libsignal_jni_testing.so" }
     }
 }
 
@@ -82,6 +84,7 @@ dependencies {
     // Mesh DTN
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
+    implementation(libs.libsignal.android)
     implementation(project(":transport-nearby"))
 
     // Core

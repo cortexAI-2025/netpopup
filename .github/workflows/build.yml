@@ -148,6 +148,13 @@ jobs:
             "-Pandroid.injected.signing.key.alias=release" \
             "-Pandroid.injected.signing.key.password=ci_password"
 
+      - name: Report APK sizes
+        run: |
+          {
+            echo "### Taille des APK"
+            ls -l app/build/outputs/apk/*/*.apk | awk '{printf "- %s : %.1f Mo\n", $9, $5/1048576}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload signed release APK
         uses: actions/upload-artifact@v4
         with:
