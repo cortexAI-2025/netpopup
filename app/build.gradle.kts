@@ -62,6 +62,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Exigé par libsignal-android (java.time, etc.)
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions { jvmTarget = "17" }
@@ -85,6 +87,7 @@ dependencies {
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
     implementation(libs.libsignal.android)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":transport-nearby"))
 
     // Core
