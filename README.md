@@ -2,6 +2,26 @@
 
 > Ultra-fast, anonymous, text-only messaging. Local geo rooms + private invite rooms.
 
+> **Pivot en cours : réseau mesh DTN offline-first.** NetPopUp devient une
+> messagerie de téléphone à téléphone (Nearby Connections, store-carry-and-forward,
+> chiffrement de bout en bout via libsignal) qui fonctionne sans GSM, sans Wi-Fi
+> et sans Firebase. La référence est le document « NetPopUp — Architecture mesh
+> v0.1 ». Le code Firebase décrit plus bas est l'ancien MVP : il sera retiré ou
+> déplacé vers un transport Internet optionnel après le premier test terrain.
+
+## Modules (mesh v0)
+
+| Module | Rôle |
+|---|---|
+| `:core-dtn` | Kotlin pur : `ChatRepository`, enveloppe, store, routage épidémique |
+| `:core-crypto` | Kotlin pur : identité, X3DH, Double Ratchet, Sender Keys (libsignal) |
+| `:transport-nearby` | Android : transport Nearby Connections (`P2P_CLUSTER`) |
+| `:app` | UI Compose, ViewModels — `minSdk` 29 (Android 10) |
+
+```bash
+./gradlew :core-dtn:test   # tests JVM du cœur, sans émulateur
+```
+
 ---
 
 ## Architecture
@@ -188,6 +208,8 @@ Each zone cell is ~1.1 km wide — large enough for a neighbourhood, small enoug
 
 ---
 
-## License
+## Licence
 
-MIT
+NetPopUp est distribué sous **GNU Affero General Public License v3.0** (voir
+[`LICENSE`](LICENSE)), licence imposée par libsignal. Toute redistribution,
+modifiée ou non, doit publier son code source sous la même licence.

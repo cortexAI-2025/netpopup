@@ -22,3 +22,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "NetPopUp"
 include(":app")
+
+// Mesh DTN v0 — voir le document « NetPopUp — Architecture mesh v0.1 »
+include(":core-dtn")          // Kotlin pur : enveloppe, store, routage, ChatRepository
+include(":core-crypto")       // Kotlin pur : identité, X3DH, Double Ratchet (libsignal)
+include(":transport-nearby")  // Android : Transport via Nearby Connections
