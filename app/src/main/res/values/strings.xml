@@ -10,4 +10,7 @@
     <string name="room_code_hint">Enter room code</string>
     <string name="error_message_too_long">Message is too long (max 500 chars)</string>
     <string name="error_rate_limit">Please wait before sending again</string>
+    <string name="mesh_channel_name">Mesh</string>
+    <string name="mesh_notification_starting">Starting…</string>
+    <string name="mesh_notification_peers">Connected phones: %1$d</string>
 </resources>
