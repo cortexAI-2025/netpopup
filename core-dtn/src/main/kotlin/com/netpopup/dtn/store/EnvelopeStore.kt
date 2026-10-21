@@ -128,6 +128,10 @@ class EnvelopeStore(
     @Synchronized
     fun all(): List<StoredEnvelope> = backend.all()
 
+    /** IDs stockés et sous pierre tombale : ce qu'un pair n'a pas besoin de nous renvoyer. */
+    @Synchronized
+    fun knownIds(): List<EnvelopeId> = backend.all().map { it.id } + backend.tombstoneIds()
+
     @Synchronized
     fun stats(): StoreStats {
         val all = backend.all()

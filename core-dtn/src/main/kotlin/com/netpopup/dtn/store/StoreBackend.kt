@@ -40,6 +40,7 @@ interface StoreBackend {
     /** Retire les pierres tombales dont `purgeAt` est dépassé ; renvoie leur nombre. */
     fun purgeTombstones(nowSeconds: Long): Int
     fun tombstoneCount(): Int
+    fun tombstoneIds(): List<EnvelopeId>
 }
 
 class InMemoryStoreBackend : StoreBackend {
@@ -61,4 +62,5 @@ class InMemoryStoreBackend : StoreBackend {
     }
 
     override fun tombstoneCount() = tombstones.size
+    override fun tombstoneIds(): List<EnvelopeId> = tombstones.keys.toList()
 }
