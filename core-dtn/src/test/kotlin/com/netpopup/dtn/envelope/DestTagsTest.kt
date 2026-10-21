@@ -36,30 +36,43 @@ class DestTagsTest {
         assertNotEquals(DestTags.forSending(key, t0).toHex(), DestTags.forSending(otherKey, t0).toHex())
     }
 
+    private fun envelopeTo(key: ByteArray, createdAt: Long, tagEpoch: Long = DestTags.epochOf(createdAt)) =
+        Envelope(
+            kind = EnvelopeKind.DATA,
+            destTag = DestTags.tag(key, tagEpoch),
+            createdAt = createdAt,
+            lifetime = Envelope.MAX_LIFETIME_SECONDS,
+            payload = ByteArray(Envelope.MIN_PAYLOAD_SIZE)
+        )
+
     @Test
-    fun `receiver accepts a sender clock off by up to 2 hours, not 3`() {
+    fun `an envelope delayed for hours still matches while it is valid`() {
         val receiverNow = 1_776_000_000L
-        listOf(-2L, -1L, 0L, 1L, 2L).forEach { offset ->
-            val tag = DestTags.forSending(key, receiverNow + offset * hour)
-            assertTrue("offset=$offset h", DestTags.matches(key, tag, receiverNow))
-        }
-        listOf(-3L, 3L).forEach { offset ->
-            val tag = DestTags.forSending(key, receiverNow + offset * hour)
-            assertFalse("offset=$offset h", DestTags.matches(key, tag, receiverNow))
+        // Créée il y a 3 h, 10 h puis 25 h (durée de vie 24 h, marge 2 h) : toujours valide
+        listOf(3L, 10L, 25L).forEach { delay ->
+            val e = envelopeTo(key, receiverNow - delay * hour)
+            assertTrue("delay=$delay h", EnvelopeCodec.decode(EnvelopeCodec.encode(e), receiverNow) is DecodeResult.Accepted)
+            assertTrue("delay=$delay h", DestTags.matches(key, e))
         }
     }
 
     @Test
-    fun `window holds five distinct tags`() {
-        val tags = DestTags.acceptedTags(key, 1_776_000_000L)
-        assertEquals(5, tags.size)
-        assertEquals(5, tags.map { it.toHex() }.toSet().size)
+    fun `sender clock ahead by up to 2 hours still matches`() {
+        val e = envelopeTo(key, 1_776_000_000L + 2 * hour)
+        assertTrue(EnvelopeCodec.decode(EnvelopeCodec.encode(e), 1_776_000_000L) is DecodeResult.Accepted)
+        assertTrue(DestTags.matches(key, e))
+    }
+
+    @Test
+    fun `tag computed for another hour than createdAt does not match`() {
+        val createdAt = 1_776_000_000L
+        val e = envelopeTo(key, createdAt, tagEpoch = DestTags.epochOf(createdAt) + 1)
+        assertFalse(DestTags.matches(key, e))
     }
 
     @Test
     fun `wrong key never matches`() {
-        val tag = DestTags.forSending(key, 1_776_000_000L)
-        assertFalse(DestTags.matches(otherKey, tag, 1_776_000_000L))
+        assertFalse(DestTags.matches(otherKey, envelopeTo(key, 1_776_000_000L)))
     }
 
     @Test
