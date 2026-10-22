@@ -65,6 +65,9 @@ interface ChatRepository {
 
     suspend fun rejectJoinRequest(requestId: String)
 
+    /** Membres, empreinte de sécurité et rotation en cours d'une room privée ; null pour les autres conversations. */
+    fun observeRoomDetails(conversationId: ConversationId): Flow<RoomDetails?>
+
     /**
      * Quitte une room ou supprime une conversation 1:1, avec ses messages et les
      * demandes d'accès reçues pour elle. Sans effet sur la room locale.

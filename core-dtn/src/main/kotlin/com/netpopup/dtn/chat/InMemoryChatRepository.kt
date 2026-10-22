@@ -7,12 +7,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlin.random.Random
 
 /**
- * Faux [ChatRepository] en mémoire, pour les tests et les previews de l'UI.
+ * [ChatRepository] en mémoire, pour les tests et les previews de l'UI.
+ *
+ * Il vit dans le code principal parce que l'app l'utilise **provisoirement** tant que l'implémentation
+ * réelle (cœur DTN + crypto + transports) n'est pas écrite : les messages ne quittent pas l'appareil.
  *
  * Aucun réseau ni chiffrement : les méthodes `simulate*` jouent le rôle des
  * autres appareils. [now] permet de contrôler l'horloge (expiration).
@@ -28,7 +32,7 @@ class InMemoryChatRepository(
     private fun newId(prefix: String) = "$prefix-${nextId++}"
 
     private val conversations = MutableStateFlow(
-        listOf(Conversation(LOCAL_ID, ConversationKind.LOCAL_PUBLIC, "Local"))
+        listOf(Conversation(LOCAL_CONVERSATION_ID, ConversationKind.LOCAL_PUBLIC, "Local"))
     )
     private val messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     private val pendingJoins = MutableStateFlow<List<PendingJoin>>(emptyList())
@@ -111,6 +115,17 @@ class InMemoryChatRepository(
         joinRequests.update { list -> list.filterNot { it.id == requestId } }
     }
 
+    override fun observeRoomDetails(conversationId: ConversationId): Flow<RoomDetails?> =
+        conversations.map { list ->
+            list.firstOrNull { it.id == conversationId && it.kind == ConversationKind.ROOM }?.let { room ->
+                RoomDetails(
+                    members = listOf(RoomMember(selfKey, selfName, isSelf = true)),
+                    securityFingerprint = fingerprintOf(room.id),
+                    keyRotationPending = room.keyRotationPending
+                )
+            }
+        }.distinctUntilChanged()
+
     override suspend fun leave(conversationId: ConversationId) {
         if (conversationId == LOCAL_ID) return
         conversations.update { list -> list.filterNot { it.id == conversationId } }
@@ -170,6 +185,10 @@ class InMemoryChatRepository(
 
     // ── Interne ──────────────────────────────────────────────────────────────
 
+    /** Empreinte factice mais stable, pour que les previews et les tests aient quelque chose à afficher. */
+    private fun fingerprintOf(id: ConversationId): String =
+        id.value.hashCode().toLong().and(0xFFFFFFFFL).toString().padStart(10, '0').chunked(5).joinToString(" ")
+
     private fun requireConversation(id: ConversationId) {
         if (conversations.value.none { it.id == id }) throw UnknownConversationException(id)
     }
@@ -194,6 +213,6 @@ class InMemoryChatRepository(
     }
 
     companion object {
-        val LOCAL_ID = ConversationId("local")
+        val LOCAL_ID = LOCAL_CONVERSATION_ID
     }
 }

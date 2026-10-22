@@ -4,6 +4,9 @@ package com.netpopup.dtn.chat
 @JvmInline
 value class ConversationId(val value: String)
 
+/** La room locale publique : toujours présente, jamais quittée. */
+val LOCAL_CONVERSATION_ID = ConversationId("local")
+
 /** Identifiant local d'un message affiché. */
 @JvmInline
 value class MessageId(val value: String)
@@ -101,3 +104,21 @@ data class MeshStatus(
         val STOPPED = MeshStatus(isRunning = false, peersInRange = 0)
     }
 }
+
+/** Membre d'une room privée, identifié par l'empreinte de sa clé d'identité. */
+data class RoomMember(
+    val identityKey: String,
+    val displayName: String,
+    val isSelf: Boolean
+)
+
+/**
+ * Ce que l'écran d'une room privée affiche en plus des messages : les membres, l'empreinte de
+ * sécurité à comparer en personne, et l'état de la rotation après un retrait.
+ */
+data class RoomDetails(
+    val members: List<RoomMember>,
+    /** Empreinte affichable, groupes de chiffres séparés par des espaces. */
+    val securityFingerprint: String,
+    val keyRotationPending: Boolean
+)

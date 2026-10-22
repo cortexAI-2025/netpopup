@@ -45,7 +45,7 @@ fun NavGraph() {
             )
         }
 
-        // 3. Private chat screen (one room)
+        // 3. Private chat screen (one room or 1:1 — roomId is the conversation id)
         composable(
             route = Screen.PrivateChat.route,
             arguments = listOf(navArgument("roomId") { type = NavType.StringType })
