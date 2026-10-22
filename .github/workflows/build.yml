@@ -159,7 +159,7 @@ jobs:
           for f in app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt transport-nearby/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt; do
             [ -f "$f" ] || continue
             echo "== $f"
-            grep -A4 -E '(^|: )Error: ' "$f" | head -120
+            grep -A4 -E '(^|: )Error: ' "$f" | head -120 || true   # aucune erreur : grep renvoie 1, ce n'est pas un échec
           done
 
       - name: "Lint — summary"
