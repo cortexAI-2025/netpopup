@@ -56,6 +56,10 @@ class SyncSession(
     private val incoming = TokenBucket(burst, perSecond)
     private val queue = ArrayDeque<StoredEnvelope>()
     private var started = false
+    private var peerFilter: BloomFilter? = null
+
+    /** Enveloppes déjà en file, déjà envoyées ou venant du pair : inutile de les lui proposer (de nouveau). */
+    private val seen = HashSet<com.netpopup.dtn.envelope.EnvelopeId>()
     /** Vrai une fois un `INVENTORY` bien formé reçu : preuve que le pair parle notre protocole. */
     var peerInventoryReceived = false
         private set
@@ -104,12 +108,24 @@ class SyncSession(
         return sentNow
     }
 
+    /**
+     * Propose au pair une enveloppe apparue depuis l'échange d'inventaire : un message écrit pendant la
+     * connexion, ou reçu d'un autre pair. Sans effet avant l'`INVENTORY` du pair, pour une enveloppe
+     * qu'il connaît déjà (filtre de Bloom) ou qu'on lui a déjà proposée.
+     */
+    fun offer(envelope: Envelope) {
+        val filter = peerFilter ?: return
+        if (filter.mightContain(envelope.id.toBytes()) || !seen.add(envelope.id)) return
+        store.get(envelope.id)?.let(queue::addLast)
+    }
+
     private fun onInventory(peerFilter: BloomFilter, nowSeconds: Long) {
         if (peerInventoryReceived) {
             stats = stats.copy(rejected = stats.rejected + 1)
             return
         }
         peerInventoryReceived = true
+        this.peerFilter = peerFilter
         store.all()
             .filter { !it.envelope.isExpired(nowSeconds) && !peerFilter.mightContain(it.id.toBytes()) }
             .sortedWith(
@@ -117,7 +133,7 @@ class SyncSession(
                     .thenBy { it.origin != Origin.SELF }
                     .thenByDescending { it.envelope.createdAt }
             )
-            .forEach(queue::addLast)
+            .forEach { seen += it.id; queue.addLast(it) }
     }
 
     private fun onEnvelope(bytes: ByteArray, nowMillis: Long) {
@@ -131,6 +147,7 @@ class SyncSession(
             stats = stats.copy(rejected = stats.rejected + 1)
             return
         }
+        seen += envelope.id // le pair l'a : ne pas la lui renvoyer
         when (store.insert(envelope, Origin.RELAY, nowSeconds)) {
             is InsertResult.Stored -> {
                 stats = stats.copy(accepted = stats.accepted + 1)

@@ -74,6 +74,9 @@ class RoomInvite(
 ) {
     val joinKeys: ChannelKeys get() = RoomKeys.join(code, roomId)
 
+    /** File sur laquelle le demandeur [requester] attend la réponse d'un membre. */
+    fun replyKeys(requester: IdentityKey): ChannelKeys = RoomKeys.reply(code, roomId, requester.serialize())
+
     fun encode(): ByteArray {
         val n = name.toByteArray(Charsets.UTF_8)
         require(n.size <= MAX_NAME_BYTES) { "room name too long" }

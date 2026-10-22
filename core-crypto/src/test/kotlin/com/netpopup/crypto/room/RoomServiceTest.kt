@@ -1,6 +1,7 @@
 package com.netpopup.crypto.room
 
 import com.netpopup.crypto.OuterLayer
+import com.netpopup.crypto.PairwiseSession
 import com.netpopup.crypto.TestDevice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,8 +18,13 @@ class RoomServiceTest {
 
     private class Member(val dev: TestDevice, var room: RoomState)
 
-    private fun deliver(out: RoomService.Outgoing, from: Member, to: Member) =
-        to.dev.session.decrypt(out.payload, from.dev.identity.publicKey)
+    /** Un message de contrôle voyage dans la session 1:1 (X3DH / Double Ratchet) avant d'atteindre le destinataire. */
+    private fun viaPair(out: RoomService.Outgoing, from: TestDevice, to: TestDevice): PairwiseSession.DecryptResult {
+        val wire = from.session.encrypt(out.recipient, out.payload)
+        return to.session.decrypt(wire, from.identity.publicKey)
+    }
+
+    private fun deliver(out: RoomService.Outgoing, from: Member, to: Member) = viaPair(out, from.dev, to.dev)
 
     private fun byKey(all: List<Member>, out: RoomService.Outgoing) = all.first { it.dev.identity.publicKey == out.recipient }
 
@@ -27,7 +33,7 @@ class RoomServiceTest {
         val sealed = joiner.rooms.sealJoin(invite, aad, joiner.bundle())
         val request = via.dev.rooms.openJoin(via.room, aad, sealed)!!
         val out = via.dev.rooms.accept(via.room, request)
-        val received = joiner.session.decrypt(out.payload)
+        val received = viaPair(out, via.dev, joiner)
         val member = Member(joiner, joiner.rooms.joinFromRoomKey(invite, received.sender, received.plaintext))
         val everyone = others + via + member
         for (o in via.dev.rooms.membershipUpdate(via.room, except = joiner.identity.publicKey).outgoing) {
@@ -130,7 +136,7 @@ class RoomServiceTest {
             b.room.epoch, b.room.secret, b.room.header, b.room.headerSignature, b.room.members,
         )
         val out = b.dev.rooms.accept(tampered, RoomService.JoinRequest(tampered.roomId, dave.bundle()))
-        val got = dave.session.decrypt(out.payload)
+        val got = viaPair(out, b.dev, dave)
         val ex = assertThrows(RoomException::class.java) { dave.rooms.joinFromRoomKey(invite, got.sender, got.plaintext) }
         assertTrue(ex.message!!, ex.message!!.contains("creator"))
     }
@@ -151,7 +157,7 @@ class RoomServiceTest {
             0, secret, header, signature, listOf(mallory.identity.publicKey),
         )
         val out1 = mallory.rooms.accept(forgedState, RoomService.JoinRequest(room.roomId, victim.bundle()))
-        val got1 = victim.session.decrypt(out1.payload)
+        val got1 = viaPair(out1, mallory, victim)
         val ex1 = assertThrows(RoomException::class.java) { victim.rooms.joinFromRoomKey(invite, got1.sender, got1.plaintext) }
         assertTrue(ex1.message!!, ex1.message!!.contains("creator"))
 
@@ -162,7 +168,7 @@ class RoomServiceTest {
             0, ByteArray(32) { 5 }, room.header, room.headerSignature, listOf(mallory.identity.publicKey),
         )
         val out2 = mallory.rooms.accept(swapped, RoomService.JoinRequest(room.roomId, victim2.bundle()))
-        val got2 = victim2.session.decrypt(out2.payload)
+        val got2 = viaPair(out2, mallory, victim2)
         val ex = assertThrows(RoomException::class.java) { victim2.rooms.joinFromRoomKey(invite, got2.sender, got2.plaintext) }
         assertTrue(ex.message!!, ex.message!!.contains("commitment"))
     }

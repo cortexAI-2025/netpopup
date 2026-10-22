@@ -38,7 +38,10 @@ class RoomService(
 ) {
     private val random = SecureRandom()
 
-    /** Payload déjà chiffré par la session 1:1, à envelopper pour [recipient]. */
+    /**
+     * Message de contrôle en **clair** pour [recipient] : l'appelant le chiffre par la session 1:1
+     * (et y joint, s'il le veut, un jeton d'acquittement) avant de l'envelopper.
+     */
     class Outgoing(val recipient: IdentityKey, val payload: ByteArray)
 
     class Distribution(val outgoing: List<Outgoing>, val unreachable: List<IdentityKey>)
@@ -102,8 +105,8 @@ class RoomService(
      * Après une admission, informe les autres membres (même époque, liste à jour) pour que tous
      * apprennent le nouveau venu et lui envoient leur Sender Key.
      */
-    fun membershipUpdate(room: RoomState, except: IdentityKey? = null): Distribution =
-        sendToMembers(room.members.filter { it != self.publicKey && it != except }) { roomKeyFor(room, it) }
+    fun membershipUpdate(room: RoomState, except: IdentityKey? = null, include: (IdentityKey) -> Boolean = { true }): Distribution =
+        sendToMembers(room.members.filter { it != self.publicKey && it != except && include(it) }) { roomKeyFor(room, it) }
 
     /** Côté demandeur : installe la room depuis un `ROOM_KEY` reçu de [sender], après vérification complète. */
     fun joinFromRoomKey(invite: RoomInvite, sender: IdentityKey, plaintext: ByteArray): RoomState {
@@ -164,14 +167,12 @@ class RoomService(
     // ── Sender Keys ──────────────────────────────────────────────────────────
 
     /** Crée la Sender Key de l'époque courante et la prépare pour chaque membre joignable. */
-    fun senderKeyDistribution(room: RoomState): Distribution {
+    fun senderKeyDistribution(room: RoomState, include: (IdentityKey) -> Boolean = { true }): Distribution {
         val skdm = GroupSessionBuilder(store).create(PairwiseSession.addressOf(self.publicKey), RoomKeys.distributionId(room.roomId, room.epoch))
         val raw = skdm.serialize()
         val body = ByteBuffer.allocate(1 + 16 + 4 + 2 + raw.size)
             .put(TYPE_SENDER_KEY).put(room.roomId).putInt(room.epoch).putShort(raw.size.toShort()).put(raw).array()
-        return sendToMembers(room.members.filter { it != self.publicKey }) {
-            Outgoing(it, pairwise.encrypt(it, body))
-        }
+        return sendToMembers(room.members.filter { it != self.publicKey && include(it) }) { Outgoing(it, body) }
     }
 
     fun onSenderKey(room: RoomState, sender: IdentityKey, plaintext: ByteArray) {
@@ -250,7 +251,7 @@ class RoomService(
         val body = ByteBuffer.allocate(1 + RoomHeader.SIZE + 64 + 32 + 1 + 33 * members.size)
             .put(TYPE_ROOM_KEY).put(room.header.encode()).put(room.headerSignature).put(room.secret)
             .put(members.size.toByte()).also { b -> members.forEach { b.put(it.serialize()) } }.array()
-        return Outgoing(recipient, pairwise.encrypt(recipient, body))
+        return Outgoing(recipient, body)
     }
 
     private fun parseRoomKey(plaintext: ByteArray): RoomKeyMessage = try {
