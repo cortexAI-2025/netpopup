@@ -11,6 +11,10 @@
     <!-- Post notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Mesh : service de premier plan de type connectedDevice (Android 14 exige la seconde) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <!-- Wake lock for FCM background delivery -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -36,6 +40,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Mesh : garde la découverte Bluetooth active en arrière-plan -->
+        <service
+            android:name=".mesh.MeshService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <!-- Firebase Cloud Messaging service -->
         <service
