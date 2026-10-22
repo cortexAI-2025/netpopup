@@ -141,7 +141,7 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :transport-nearby:testDebugUnitTest --no-daemon --max-workers=1
+        run: gradle :transport-nearby:testDebugUnitTest :app:testDebugUnitTest --no-daemon --max-workers=1
 
       # Lint des modules Android : toute erreur de sévérité « error » fait échouer la CI (mesh-03).
       # Les rapports sont publiés dans tous les cas.
