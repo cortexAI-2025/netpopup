@@ -147,3 +147,6 @@ class Envelope(
 }
 
 internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+/** Les 16 octets de l'identifiant. */
+fun EnvelopeId.toBytes(): ByteArray = ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
