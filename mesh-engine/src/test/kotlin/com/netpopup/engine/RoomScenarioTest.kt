@@ -28,12 +28,13 @@ class RoomScenarioTest {
 
     /** [joiner] demande l'accès avec [link] ; [via] accepte la première demande reçue. */
     private suspend fun admit(link: String, joiner: TestNode, via: TestNode) {
-        joiner.repo.requestToJoin(link); settle(30)
-        val request = via.pendingRequests().single { it.displayName == joiner.name }
-        via.repo.approveJoinRequest(request.id); settle(60)
+        joiner.repo.requestToJoin(link)
+        awaitEquals(true, "${via.name} reçoit la demande de ${joiner.name}") { via.pendingRequests().any { it.displayName == joiner.name } }
+        via.repo.approveJoinRequest(via.pendingRequests().single { it.displayName == joiner.name }.id)
+        awaitEquals(true, "${joiner.name} reçoit la réponse") { joiner.roomNamed(CryptoInvite.fromUri(link).name) != null }
     }
 
-    private suspend fun TestNode.says(room: ConversationId, text: String) { repo.sendText(room, text); settle(60) }
+    private suspend fun TestNode.says(room: ConversationId, text: String) { repo.sendText(room, text) }
 
     @Test fun anyMemberCanAdmitAndEveryoneReadsEveryone() = runTest {
         val w = world()
@@ -47,18 +48,21 @@ class RoomScenarioTest {
         admit(invite.link, c, via = b)                                      // B, simple membre, admet C
         val roomOnC = c.roomNamed("Voisins")
         assertNotNull(roomOnC)
-        settle(120)                                                          // annonces, Sender Keys, mises à jour de membres
-
+        // Annonces, Sender Keys et mises à jour de membres circulent sans qu'on ait à les attendre une à une :
+        // chaque message est réessayé tant que sa Sender Key n'est pas arrivée.
         a.says(invite.conversationId, "bonjour de A")
         b.says(roomOnB!!.id, "bonjour de B")
         c.says(roomOnC!!.id, "bonjour de C")
 
         for ((node, id) in listOf(a to invite.conversationId, b to roomOnB.id, c to roomOnC.id)) {
-            assertEquals("chez ${node.name}", setOf("bonjour de A", "bonjour de B", "bonjour de C"), node.bodies(id).toSet())
+            awaitEquals(setOf("bonjour de A", "bonjour de B", "bonjour de C"), "chez ${node.name}") { node.bodies(id).toSet() }
         }
         // Chacun voit ses trois membres et la même empreinte de membres.
+        for ((n, id) in listOf(a to invite.conversationId, b to roomOnB.id, c to roomOnC.id)) {
+            awaitEquals(3, "membres vus par ${n.name}") { n.repo.observeRoomDetails(id).first()!!.members.size }
+        }
         val fingerprints = listOf(a to invite.conversationId, b to roomOnB.id, c to roomOnC.id).map { (n, id) ->
-            n.repo.observeRoomDetails(id).first()!!.also { assertEquals(3, it.members.size) }.securityFingerprint
+            n.repo.observeRoomDetails(id).first()!!.securityFingerprint
         }
         assertEquals(1, fingerprints.toSet().size)
         // Les noms viennent des annonces signées, pas du hasard.
@@ -72,9 +76,10 @@ class RoomScenarioTest {
         val invite = a.repo.createRoom("Fermée", AdmissionPolicy.CREATOR_ONLY)
         admit(invite.link, b, via = a)
 
-        c.repo.requestToJoin(invite.link); settle(60)
+        c.repo.requestToJoin(invite.link)
+        awaitEquals(listOf("C"), "le créateur voit la demande") { a.pendingRequests().map { it.displayName } }
+        settle(60)
         assertTrue("un simple membre ne voit pas la demande", b.pendingRequests().isEmpty())
-        assertEquals(listOf("C"), a.pendingRequests().map { it.displayName })
 
         a.repo.rejectJoinRequest(a.pendingRequests().single().id); settle(30)
         assertTrue(a.pendingRequests().isEmpty())
@@ -90,8 +95,9 @@ class RoomScenarioTest {
         val real = CryptoInvite.fromUri(invite.link)
         val tampered = CryptoInvite(real.roomId, real.code, real.creator, CryptoPolicy.ANY_MEMBER, real.name).toUri()
 
-        c.repo.requestToJoin(tampered); settle(30)
-        a.repo.approveJoinRequest(a.pendingRequests().single().id); settle(60)
+        c.repo.requestToJoin(tampered)
+        awaitEquals(true, "la demande arrive (elle est valide pour le créateur)") { a.pendingRequests().isNotEmpty() }
+        a.repo.approveJoinRequest(a.pendingRequests().single().id); settle(120)
         // Le ROOM_KEY authentique porte la politique signée par le créateur : elle ne correspond pas à l'invitation.
         assertNull(c.roomNamed("Fermée"))
     }
@@ -101,12 +107,13 @@ class RoomScenarioTest {
         val (a, b, spy) = w.nodes("A", "B", "S")
         w.network.connect("A", "B"); w.network.connect("A", "S")
         val invite = a.repo.createRoom("Privée", AdmissionPolicy.ANY_MEMBER)
-        admit(invite.link, b, via = a); settle(60)
-        spy.repo.requestToJoin(invite.link); settle(30)                      // S a le lien mais personne ne l'accepte
+        admit(invite.link, b, via = a)
+        spy.repo.requestToJoin(invite.link)                                  // S a le lien mais personne ne l'accepte
         a.says(invite.conversationId, "secret de salon")
+        awaitEquals(listOf("secret de salon"), "B, membre, lit") { b.bodies(b.roomNamed("Privée")!!.id) }
+        settle(120)
         assertTrue(spy.conversations().none { it.title == "Privée" })
         assertTrue(spy.messages(invite.conversationId).isEmpty())
-        assertEquals(listOf("secret de salon"), b.bodies(b.roomNamed("Privée")!!.id))
     }
 
     @Test fun removedMemberStopsReadingAndRotationCompletes() = runTest {
@@ -114,18 +121,22 @@ class RoomScenarioTest {
         val (a, b, c) = w.nodes("A", "B", "C")
         w.network.connect("A", "B"); w.network.connect("A", "C"); w.network.connect("B", "C")
         val invite = a.repo.createRoom("Voisins", AdmissionPolicy.ANY_MEMBER)
-        admit(invite.link, b, via = a); admit(invite.link, c, via = a); settle(120)
+        admit(invite.link, b, via = a); admit(invite.link, c, via = a)
         val roomB = b.roomNamed("Voisins")!!.id; val roomC = c.roomNamed("Voisins")!!.id
         a.says(invite.conversationId, "avant le retrait")
-        assertEquals(listOf("avant le retrait"), c.bodies(roomC))
+        awaitEquals(listOf("avant le retrait"), "C lit") { c.bodies(roomC) }
+        awaitEquals(listOf("avant le retrait"), "B lit") { b.bodies(roomB) }
 
+        awaitEquals(true, "A connaît le nom de B") { a.repo.observeRoomDetails(invite.conversationId).first()!!.members.any { it.displayName == "B" } }
         val bKey = a.repo.observeRoomDetails(invite.conversationId).first()!!.members.first { it.displayName == "B" }.identityKey
         a.engine.removeMember(invite.conversationId, bKey)
-        settle(180)                                                          // ROOM_KEY de l'époque suivante, nouvelles Sender Keys
-        assertFalse("rotation terminée", a.conversations().first { it.id == invite.conversationId }.keyRotationPending)
+        // ROOM_KEY de l'époque suivante, puis nouvelles Sender Keys de chaque membre restant.
+        awaitEquals(false, "rotation terminée") { a.conversations().first { it.id == invite.conversationId }.keyRotationPending }
+        awaitEquals(false, "rotation terminée chez C") { c.conversations().first { it.id == roomC }.keyRotationPending }
 
         a.says(invite.conversationId, "après le retrait")
-        assertEquals(listOf("avant le retrait", "après le retrait"), c.bodies(roomC))
+        awaitEquals(listOf("avant le retrait", "après le retrait"), "C lit la suite") { c.bodies(roomC) }
+        settle(120)
         assertEquals(listOf("avant le retrait"), b.bodies(roomB))            // B ne lit plus rien de nouveau
         assertEquals(2, a.repo.observeRoomDetails(invite.conversationId).first()!!.members.size)
     }
@@ -135,14 +146,16 @@ class RoomScenarioTest {
         val (a, b) = w.nodes("A", "B")
         w.network.connect("A", "B")
         val invite = a.repo.createRoom("Voisins", AdmissionPolicy.ANY_MEMBER)
-        admit(invite.link, b, via = a); settle(60)
+        admit(invite.link, b, via = a)
         val roomB = b.roomNamed("Voisins")!!.id
         a.says(invite.conversationId, "avant")
+        awaitEquals(listOf("avant"), "B lit avant le redémarrage") { b.bodies(roomB) }
         b.restart(); a.restart()
         w.network.connect("A", "B"); settle(30)
         assertEquals(listOf("avant"), b.bodies(b.roomNamed("Voisins")!!.id))  // état de room et Sender Keys relus du disque
         b.says(roomB, "après"); a.says(invite.conversationId, "encore")
-        assertEquals(listOf("avant", "après", "encore"), a.bodies(invite.conversationId))
-        assertEquals(listOf("avant", "après", "encore"), b.bodies(roomB))
+        // Deux messages envoyés dans la même seconde par deux appareils : l'ordre entre eux n'est pas garanti.
+        awaitEquals(setOf("avant", "après", "encore"), "A") { a.bodies(invite.conversationId).toSet() }
+        awaitEquals(setOf("avant", "après", "encore"), "B") { b.bodies(roomB).toSet() }
     }
 }

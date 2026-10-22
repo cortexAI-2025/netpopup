@@ -129,7 +129,7 @@ class RoomService(
         when {
             msg.header.epoch < room.epoch -> throw RoomException("stale epoch")
             msg.header.epoch == room.epoch -> {
-                if (!room.isMember(sender)) throw RoomException("sender is not a member")
+                if (!room.isMember(sender)) throw RoomNotReadyException("sender is not a member")
                 if (!msg.secret.contentEquals(room.secret)) throw RoomException("conflicting secret for this epoch")
                 msg.members.forEach(room::addMember)
             }
@@ -176,7 +176,7 @@ class RoomService(
     }
 
     fun onSenderKey(room: RoomState, sender: IdentityKey, plaintext: ByteArray) {
-        if (!room.isMember(sender)) throw RoomException("sender is not a member")
+        if (!room.isMember(sender)) throw RoomNotReadyException("sender is not a member")
         try {
             val b = ByteBuffer.wrap(plaintext)
             if (b.get() != TYPE_SENDER_KEY) throw RoomException("not a sender key")

@@ -4,14 +4,13 @@ import com.netpopup.dtn.chat.DeliveryState
 import com.netpopup.dtn.chat.InvalidInviteException
 import com.netpopup.dtn.chat.LOCAL_CONVERSATION_ID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import kotlinx.coroutines.flow.first
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -24,7 +23,6 @@ import org.junit.rules.TemporaryFolder
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScenarioTest {
     @get:Rule val tmp = TemporaryFolder()
-    private val base = 1_700_000_000_000L
 
     private fun TestScope.world() = World(this, tmp.root)
 
@@ -47,15 +45,13 @@ class ScenarioTest {
         settle(60)
         assertEquals(DeliveryState.QUEUED, a.state(conv, "salut B"))     // toujours pas transmis : rien n'est inventé
 
-        w.network.connect("A", "B"); settle(30)
-        assertEquals(0, b.bodies(b.directWith(a)!!).count { it != "salut B" })
+        w.network.connect("A", "B")
+        awaitEquals(DeliveryState.ACKNOWLEDGED, "l'ACK vient de B, pas d'un compteur local") { a.state(conv, "salut B") }
         assertEquals(listOf("salut B"), b.bodies(b.directWith(a)!!))
-        assertEquals(DeliveryState.ACKNOWLEDGED, a.state(conv, "salut B")) // l'ACK vient de B, pas d'un compteur local
 
         val back = b.repo.sendText(b.directWith(a)!!, "bien reçu")
-        settle(30)
-        assertEquals(listOf("salut B", "bien reçu"), a.bodies(conv))
-        assertEquals(DeliveryState.ACKNOWLEDGED, b.state(back.conversationId, "bien reçu"))
+        awaitEquals(listOf("salut B", "bien reçu"), "A reçoit la réponse") { a.bodies(conv) }
+        awaitEquals(DeliveryState.ACKNOWLEDGED) { b.state(back.conversationId, "bien reçu") }
         assertEquals("A", b.messages(b.directWith(a)!!).first().displayName)
     }
 
@@ -63,12 +59,10 @@ class ScenarioTest {
         val w = world()
         val (a, b) = w.nodes("A", "B")
         w.network.connect("A", "B")
-        a.introduce(b); settle(30)
-        // B n'a rien scanné : l'introduction déposée dans sa boîte lui a appris A.
-        val convOnB = b.directWith(a)
-        assertNotNull(convOnB)
-        b.repo.sendText(convOnB!!, "je te réponds"); settle(30)
-        assertEquals(listOf("je te réponds"), a.bodies(a.directWith(b)!!))
+        a.introduce(b)
+        awaitEquals(true, "B apprend A par la boîte d'introduction") { b.directWith(a) != null }  // B n'a rien scanné
+        b.repo.sendText(b.directWith(a)!!, "je te réponds")
+        awaitEquals(listOf("je te réponds"), "A reçoit") { a.bodies(a.directWith(b)!!) }
     }
 
     // ── Relais, livraison différée ───────────────────────────────────────────
@@ -77,11 +71,12 @@ class ScenarioTest {
         val w = world()
         val (a, b, c) = w.nodes("A", "B", "C")
         w.network.connect("A", "B"); w.network.connect("B", "C")     // A et C ne se voient jamais
-        val conv = a.introduce(c); settle(30)
-        a.repo.sendText(conv, "via B"); settle(60)
+        val conv = a.introduce(c)
+        awaitEquals(true, "C apprend A par le relais") { c.directWith(a) != null }
+        a.repo.sendText(conv, "via B")
 
-        assertEquals(listOf("via B"), c.bodies(c.directWith(a)!!))
-        assertEquals(DeliveryState.ACKNOWLEDGED, a.state(conv, "via B"))  // l'ACK a refait le chemin C → B → A
+        awaitEquals(listOf("via B"), "C reçoit par B") { c.bodiesWith(a) }
+        awaitEquals(DeliveryState.ACKNOWLEDGED, "l'ACK a refait le chemin C → B → A") { a.state(conv, "via B") }
         assertTrue("le relais ne voit aucun texte", b.conversations().none { it.kind.name == "DIRECT" })
     }
 
@@ -90,16 +85,16 @@ class ScenarioTest {
         val (a, b, c) = w.nodes("A", "B", "C")
         w.network.connect("A", "B")
         val conv = a.introduce(c); settle(20)
-        a.repo.sendText(conv, "porté par B"); settle(30)
+        a.repo.sendText(conv, "porté par B")
+        awaitEquals(DeliveryState.RELAYED, "transmis à un pair, pas encore reçu") { a.state(conv, "porté par B") }
         w.network.disconnect("A", "B"); settle(30)       // B s'éloigne en emportant le message
-        assertEquals(DeliveryState.RELAYED, a.state(conv, "porté par B"))  // transmis à un pair, pas encore reçu
 
-        w.network.connect("B", "C"); settle(60)          // B croise C
-        assertEquals(listOf("porté par B"), c.bodies(c.directWith(a)!!))
+        w.network.connect("B", "C")                      // B croise C
+        awaitEquals(listOf("porté par B"), "C reçoit") { c.bodiesWith(a) }
         assertEquals(DeliveryState.RELAYED, a.state(conv, "porté par B"))  // A ne sait toujours rien
 
-        w.network.disconnect("B", "C"); w.network.connect("A", "B"); settle(60)  // B repasse voir A avec l'ACK
-        assertEquals(DeliveryState.ACKNOWLEDGED, a.state(conv, "porté par B"))
+        w.network.disconnect("B", "C"); w.network.connect("A", "B")        // B repasse voir A avec l'ACK
+        awaitEquals(DeliveryState.ACKNOWLEDGED) { a.state(conv, "porté par B") }
     }
 
     // ── Redémarrage ──────────────────────────────────────────────────────────
@@ -112,15 +107,15 @@ class ScenarioTest {
         a.restart()                                       // le téléphone redémarre avec un message en attente
         assertEquals(DeliveryState.QUEUED, a.state(conv, "avant le redémarrage"))
 
-        w.network.connect("A", "B"); settle(30)
-        assertEquals(listOf("avant le redémarrage"), b.bodies(b.directWith(a)!!))
-        assertEquals(DeliveryState.ACKNOWLEDGED, a.state(conv, "avant le redémarrage"))
+        w.network.connect("A", "B")
+        awaitEquals(listOf("avant le redémarrage"), "B reçoit") { b.bodiesWith(a) }
+        awaitEquals(DeliveryState.ACKNOWLEDGED, "l'ACK attendu a survécu au redémarrage") { a.state(conv, "avant le redémarrage") }
 
         b.restart(); a.restart()                          // les deux redémarrent : session et messages conservés
         assertEquals(listOf("avant le redémarrage"), b.bodies(b.directWith(a)!!))
         w.network.connect("A", "B"); settle(10)
-        b.repo.sendText(b.directWith(a)!!, "après"); settle(30)
-        assertEquals(listOf("avant le redémarrage", "après"), a.bodies(conv))
+        b.repo.sendText(b.directWith(a)!!, "après")
+        awaitEquals(listOf("avant le redémarrage", "après"), "la session survit") { a.bodies(conv) }
     }
 
     @Test fun acknowledgementArrivingAfterTheSenderRestarted() = runTest {
@@ -129,11 +124,10 @@ class ScenarioTest {
         val conv = a.introduce(b)
         w.network.connect("A", "B"); settle(5)
         a.repo.sendText(conv, "x")
-        w.network.disconnect("A", "B")                    // coupé avant que l'ACK ne revienne ?
-        settle(1)
+        w.network.disconnect("A", "B")                    // coupé avant que le message ne parte
         a.restart()
-        w.network.connect("A", "B"); settle(40)
-        assertEquals(DeliveryState.ACKNOWLEDGED, a.state(conv, "x"))
+        w.network.connect("A", "B")
+        awaitEquals(DeliveryState.ACKNOWLEDGED) { a.state(conv, "x") }
     }
 
     // ── Expiration ───────────────────────────────────────────────────────────
@@ -145,7 +139,7 @@ class ScenarioTest {
         a.repo.sendText(conv, "éphémère")
         settleHours(9)                                    // 6 h de vie + 2 h de tolérance + marge
         assertTrue(a.bodies(conv).isEmpty())              // plus affiché
-        w.network.connect("A", "B"); settle(60)
+        w.network.connect("A", "B"); settle(120)
         assertNull(b.directWith(a)?.let { b.bodies(it).firstOrNull() })   // jamais livré
     }
 
@@ -163,8 +157,8 @@ class ScenarioTest {
         assertTrue(a.engine.meshStatus.value.isRunning)
 
         val b = w.node("B"); b.start()
-        w.network.connect("A", "B"); settle(5)
-        assertEquals(1, a.engine.meshStatus.value.peersInRange)   // seul B a parlé le protocole
+        w.network.connect("A", "B")
+        awaitEquals(1, "seul B a parlé le protocole") { a.engine.meshStatus.value.peersInRange }
         w.network.disconnect("A", "B"); settle(2)
         assertEquals(0, a.engine.meshStatus.value.peersInRange)
         assertNotNull(stranger)
@@ -184,12 +178,12 @@ class ScenarioTest {
         val w = world()
         val (a, b) = w.nodes("A", "B")
         w.network.connect("A", "B"); settle(5)
-        a.repo.sendText(LOCAL_CONVERSATION_ID, "bonjour le quartier"); settle(20)
+        a.repo.sendText(LOCAL_CONVERSATION_ID, "bonjour le quartier")
+        awaitEquals(listOf("bonjour le quartier"), "B reçoit") { b.bodies(LOCAL_CONVERSATION_ID) }
         val received = b.messages(LOCAL_CONVERSATION_ID).single()
-        assertEquals("bonjour le quartier", received.body)
         assertEquals("A", received.displayName)
         assertEquals(false, received.isOwn)
-        assertEquals(DeliveryState.RELAYED, a.state(LOCAL_CONVERSATION_ID, "bonjour le quartier")) // jamais « acquitté »
+        awaitEquals(DeliveryState.RELAYED, "jamais « acquitté » dans une room") { a.state(LOCAL_CONVERSATION_ID, "bonjour le quartier") }
     }
 
     // ── Liens d'invitation ───────────────────────────────────────────────────

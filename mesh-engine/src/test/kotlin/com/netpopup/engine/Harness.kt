@@ -38,6 +38,8 @@ class LoopbackNetwork(
     private val transports = HashMap<String, LoopbackTransport>()
     private val together = HashSet<Set<String>>()
     private val reconnects = HashMap<Set<String>, kotlinx.coroutines.Job>()
+    val log = ArrayList<String>()
+    var clockForLog: () -> Long = { 0L }
 
     fun register(t: LoopbackTransport) { transports[t.name] = t }
 
@@ -46,14 +48,16 @@ class LoopbackNetwork(
     /** Rapproche deux appareils : chacun voit apparaître l'autre. */
     fun connect(a: String, b: String) {
         reconnects.remove(setOf(a, b))?.cancel()
-        if (!together.add(setOf(a, b))) return
+        if (!together.add(setOf(a, b))) { log += "t=${clockForLog() / 1000} connect($a,$b) IGNORED already together"; return }
+        log += "t=${clockForLog() / 1000} connect($a,$b)"
         transports[a]?.emit(TransportEvent.PeerConnected(PeerHandle(TransportId.NEARBY, b)))
         transports[b]?.emit(TransportEvent.PeerConnected(PeerHandle(TransportId.NEARBY, a)))
     }
 
     /** Un côté a fermé le lien (rotation) : ils s'éloignent un instant puis se redécouvrent. */
     fun rotate(a: String, b: String) {
-        if (setOf(a, b) !in together) return
+        if (setOf(a, b) !in together) { log += "t=${clockForLog() / 1000} rotate($a,$b) IGNORED not together"; return }
+        log += "t=${clockForLog() / 1000} rotate($a,$b)"
         disconnect(a, b)
         val key = setOf(a, b)
         reconnects[key] = scope?.launch { delay(rediscoverMillis); reconnects.remove(key); connect(a, b) } ?: return
@@ -68,7 +72,11 @@ class LoopbackNetwork(
 
     /** Un appareil qui redémarre perd ses liens radio (sans que l'autre côté soit prévenu avant sa redécouverte). */
     fun dropAll(name: String) {
-        together.removeAll { name in it }
+        for (pair in together.filter { name in it }) {
+            val other = (pair - name).single()
+            disconnect(name, other)               // l'autre côté est prévenu, comme avec une vraie radio
+        }
+        reconnects.keys.filter { name in it }.forEach { reconnects.remove(it)?.cancel() }
     }
 
     fun deliver(from: String, to: String, frame: ByteArray): SendResult {
@@ -108,6 +116,7 @@ class TestNode(
     private val dir: File,
     private val clock: () -> Long,
     private val transportConfig: TransportManagerConfig = TransportManagerConfig(),
+    private val seed: Int = 7,
 ) {
     private val file = File(dir, "$name.db")
     private lateinit var db: JdbcSqlDatabase
@@ -122,8 +131,10 @@ class TestNode(
         transport = LoopbackTransport(name, network)
         engine = MeshEngine(
             db, listOf(transport), scope, clock,
-            EngineConfig(displayName = { name }, pumpIntervalMillis = 100, maintenanceIntervalMillis = 10_000),
-            transportConfig,
+            // Taux de faux positifs quasi nul : un faux positif (0,1 % en production, rattrapé au contact suivant) rend
+            // un test non déterministe sans rien prouver de plus.
+            EngineConfig(displayName = { name }, pumpIntervalMillis = 100, maintenanceIntervalMillis = 10_000, bloomFalsePositiveRate = 1e-6),
+            transportConfig, kotlin.random.Random(seed),
         )
         repo = MeshChatRepository(engine, clock)
     }
@@ -156,6 +167,9 @@ class TestNode(
     suspend fun state(id: ConversationId, body: String): DeliveryState? = messages(id).firstOrNull { it.body == body }?.deliveryState
 
     suspend fun bodies(id: ConversationId): List<String> = messages(id).map { it.body }
+
+    /** Les textes échangés avec [other], ou rien tant que la conversation n'existe pas. */
+    suspend fun bodiesWith(other: TestNode): List<String> = directWith(other)?.let { bodies(it) } ?: emptyList()
 }
 
 /** Avance le temps virtuel : les boucles de synchronisation et d'entretien tournent pendant ce temps. */
@@ -165,11 +179,21 @@ suspend fun settleHours(h: Int) = delay(h.hours)
 
 /** Un monde simulé : une radio, des téléphones, un temps virtuel qui sert d'horloge à tous. */
 class World(private val testScope: TestScope, private val dir: File, private val base: Long = 1_700_000_000_000L) {
-    val network = LoopbackNetwork(testScope.backgroundScope)
+    val network = LoopbackNetwork(testScope.backgroundScope).also { n -> n.clockForLog = { testScope.currentTime } }
 
     fun node(name: String): TestNode =
         TestNode(name, network, testScope.backgroundScope, dir, { base + testScope.currentTime })
 
     /** Crée et démarre plusieurs téléphones. */
     suspend fun nodes(vararg names: String): List<TestNode> = names.map { node(it).also { n -> n.start() } }
+}
+
+/**
+ * Attend, en temps virtuel, que [actual] vaille [expected], puis l'affirme. Les liens tournent toutes les 5 à 10
+ * minutes et mettent jusqu'à ~75 s à se rétablir : une attente fixe serait fragile, une condition ne l'est pas.
+ */
+suspend fun <T> awaitEquals(expected: T, message: String = "", seconds: Int = 1800, actual: suspend () -> T) {
+    var waited = 0
+    while (actual() != expected && waited < seconds) { settle(5); waited += 5 }
+    org.junit.Assert.assertEquals(message, expected, actual())
 }

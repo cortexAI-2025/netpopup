@@ -11,6 +11,7 @@ import com.netpopup.crypto.PairwiseSession
 import com.netpopup.crypto.PreKeyManager
 import com.netpopup.crypto.room.AdmissionPolicy as CryptoPolicy
 import com.netpopup.crypto.room.RoomException
+import com.netpopup.crypto.room.RoomNotReadyException
 import com.netpopup.crypto.room.RoomInvite as CryptoInvite
 import com.netpopup.crypto.room.RoomService
 import com.netpopup.crypto.room.RoomState
@@ -111,6 +112,7 @@ class MeshEngine(
     private val clock: () -> Long = System::currentTimeMillis,
     private val config: EngineConfig = EngineConfig(),
     transportConfig: TransportManagerConfig = TransportManagerConfig(),
+    random: kotlin.random.Random = kotlin.random.Random.Default,
 ) {
     /**
      * Une erreur dans une opération ou un lien (lien d'invitation refusé, pair hostile) ne doit jamais faire
@@ -133,7 +135,7 @@ class MeshEngine(
     private val contacts = ContactBook { states.put(K_CONTACT, hex(it.identityKey.serialize()), encodeContact(it)) }
     private val rooms = RoomService(signal, identity, pairwise, contacts, clock)
     private val store = EnvelopeStore(SqlStoreBackend(db))
-    private val manager = TransportManager(transports, scope, transportConfig, clockMillis = clock)
+    private val manager = TransportManager(transports, scope, transportConfig, random, clock)
 
     private val roomStates = LinkedHashMap<ConversationId, RoomState>()
     private val messengers = HashMap<String, DirectMessenger>()
@@ -422,6 +424,7 @@ class MeshEngine(
             rescanRoom(convId, room)
             rescanDirect()
             roomMaintenance(convId, room)
+            retryDeferred()
             return
         }
     }
@@ -442,24 +445,69 @@ class MeshEngine(
 
     // ── Contrôle des rooms (ROOM_KEY, Sender Keys) reçu par session 1:1 ──────
 
+    private enum class Applied { DONE, DROP, LATER }
+
     private fun onControl(peer: IdentityKey, payload: ByteArray) {
-        if (payload.size < 17) return
+        // Le message est déjà acquitté et retiré du store : s'il ne peut pas encore s'appliquer, on le garde.
+        when (applyControl(peer, payload)) {
+            Applied.LATER -> deferControl(peer, payload)
+            Applied.DONE -> retryDeferred()
+            Applied.DROP -> Unit
+        }
+    }
+
+    private fun applyControl(peer: IdentityKey, payload: ByteArray): Applied {
+        if (payload.size < 17) return Applied.DROP
         val roomId = payload.copyOfRange(1, 17)
-        val (convId, room) = roomStates.entries.firstOrNull { it.value.roomId.contentEquals(roomId) }?.toPair() ?: return
+        val (convId, room) = roomStates.entries.firstOrNull { it.value.roomId.contentEquals(roomId) }?.toPair()
+            ?: return Applied.LATER                         // notre propre ROOM_KEY n'est peut-être pas encore arrivé
         try {
             when (payload[0]) {
                 RoomService.TYPE_ROOM_KEY -> rooms.onRoomKey(room, peer, payload)
                 RoomService.TYPE_SENDER_KEY -> rooms.onSenderKey(room, peer, payload)
-                else -> return
+                else -> return Applied.DROP
             }
+        } catch (e: RoomNotReadyException) {
+            return Applied.LATER
         } catch (e: RoomException) {
-            return
+            return Applied.DROP
         }
         persistRoom(convId, room)
         refreshConversations()
         rescanRoom(convId, room)
         rescanDirect()
         roomMaintenance(convId, room)
+        return Applied.DONE
+    }
+
+    private var retrying = false
+
+    private fun deferControl(peer: IdentityKey, payload: ByteArray) {
+        val deferred = states.all(K_DEFER)
+        if (deferred.size >= MAX_DEFERRED) states.delete(K_DEFER, deferred.minOf { it.first })
+        states.put(K_DEFER, "%020d-%s".format(clock(), UUID.randomUUID().toString().take(8)), peer.serialize() + payload)
+    }
+
+    /** Rejoue les messages de contrôle reçus trop tôt, tant que l'un d'eux aboutit (l'ordre d'arrivée est libre). */
+    private fun retryDeferred() {
+        if (retrying) return
+        retrying = true
+        try {
+            do {
+                var progressed = false
+                for ((id, data) in states.all(K_DEFER).sortedBy { it.first }) {
+                    if (data.size < 34) { states.delete(K_DEFER, id); continue }
+                    val peer = try { IdentityKey(data.copyOfRange(0, 33)) } catch (e: Exception) { states.delete(K_DEFER, id); continue }
+                    when (applyControl(peer, data.copyOfRange(33, data.size))) {
+                        Applied.DONE -> { states.delete(K_DEFER, id); progressed = true }
+                        Applied.DROP -> states.delete(K_DEFER, id)
+                        Applied.LATER -> Unit
+                    }
+                }
+            } while (progressed)
+        } finally {
+            retrying = false
+        }
     }
 
     // ── Entretien des rooms : annonces, Sender Keys, mises à jour de membres ──
@@ -500,6 +548,8 @@ class MeshEngine(
             lastPurgeAt = now
             store.purge(now / 1000)
             messageDao.purgeExpired(now)
+            states.all(K_DEFER).filter { it.first.take(20).toLongOrNull()?.let { at -> now - at > DEFER_TTL_MILLIS } ?: true }
+                .forEach { states.delete(K_DEFER, it.first) }
             pendingJoins.entries.removeAll { (now - it.value.requestedAt) > PENDING_JOIN_TTL_MILLIS }
                 .also { if (it) refreshPendingJoins() }
             refreshMessages()
@@ -606,6 +656,7 @@ class MeshEngine(
         joinRequests.remove(requestId); states.delete(K_JOIN_REQUEST, requestId)
         refreshAll()
         roomMaintenance(convId, room)
+        retryDeferred()
     }
 
     suspend fun rejectJoinRequest(requestId: String) = onEngine {
@@ -858,12 +909,15 @@ class MeshEngine(
         private const val K_MS_PENDING = "ms_pending"
         private const val K_ANNOUNCE = "announce_at"
         private const val K_TX = "tx"
+        private const val K_DEFER = "ctrl_deferred"
+        private const val MAX_DEFERRED = 64
 
         const val DEFAULT_LIFETIME = Envelope.DEFAULT_LIFETIME_SECONDS
         const val ANNOUNCE_LIFETIME = Envelope.DEFAULT_LIFETIME_SECONDS
         const val CONTROL_LIFETIME = Envelope.MAX_LIFETIME_SECONDS
         const val JOIN_LIFETIME = Envelope.MAX_LIFETIME_SECONDS
         const val PENDING_JOIN_TTL_MILLIS = 24L * 3_600_000
+        const val DEFER_TTL_MILLIS = 24L * 3_600_000
 
         private fun hexOf(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
     }

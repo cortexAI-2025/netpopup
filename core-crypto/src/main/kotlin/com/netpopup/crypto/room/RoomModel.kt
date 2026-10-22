@@ -9,7 +9,13 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
 
-class RoomException(message: String) : Exception(message)
+open class RoomException(message: String) : Exception(message)
+
+/**
+ * Le message est authentique mais l'état local n'est pas encore prêt à l'appliquer (l'expéditeur n'est pas
+ * encore connu comme membre). Il faut le garder et le rejouer plus tard, pas le jeter.
+ */
+class RoomNotReadyException(message: String) : RoomException(message)
 
 /** Qui peut accepter une demande d'accès. Seul le créateur peut retirer un membre, quelle que soit la politique. */
 enum class AdmissionPolicy(val code: Byte) {
