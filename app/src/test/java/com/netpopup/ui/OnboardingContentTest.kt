@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [34])
+@Config(application = Application::class, sdk = [34], qualifiers = "w420dp-h4000dp")
 class OnboardingContentTest {
     @get:Rule val compose = createComposeRule()
 
