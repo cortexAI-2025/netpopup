@@ -1,22 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network access -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Approximate location for geo-zone computation (coarse only — no precise GPS) -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
     <!-- Post notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Mesh : service de premier plan de type connectedDevice (Android 14 exige la seconde) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-
-    <!-- Wake lock for FCM background delivery -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".NetPopUpApplication"
@@ -46,15 +36,6 @@
             android:name=".mesh.MeshService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
-
-        <!-- Firebase Cloud Messaging service -->
-        <service
-            android:name=".service.NetPopUpMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
 
     </application>
 

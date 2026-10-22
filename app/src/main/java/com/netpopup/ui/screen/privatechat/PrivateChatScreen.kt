@@ -1,47 +1,31 @@
 package com.netpopup.ui.screen.privatechat
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.netpopup.ui.component.ChatInputBar
-import com.netpopup.ui.component.MessageBubble
+import com.netpopup.dtn.chat.RoomDetails
 import com.netpopup.ui.component.NetPopUpTopBar
+import com.netpopup.ui.screen.conversation.ConversationView
 import com.netpopup.ui.theme.Primary
-import com.netpopup.ui.util.rememberFeedbackManager
-import com.netpopup.ui.util.rememberScrollManager
 
 /**
- * Écran de chat privé (room invite-only).
- *
- * Même architecture scroll + haptic que LocalChatScreen :
- *  - [ScrollManager]  gère isAtBottom pixel-based et les règles de scroll.
- *  - [FeedbackManager] gère tout le feedback sensoriel.
+ * Room privée : messages, état de livraison, et en haut l'état du chiffrement. Le bouton « i » ouvre
+ * les membres et l'empreinte de sécurité, à comparer en personne. « Key rotation in progress »
+ * s'affiche après un retrait de membre, tant que les nouvelles clés ne sont pas toutes en place.
  */
 @Composable
 fun PrivateChatScreen(
@@ -49,90 +33,57 @@ fun PrivateChatScreen(
     onBack: () -> Unit,
     viewModel: PrivateChatViewModel = hiltViewModel()
 ) {
-    val uiState         by viewModel.uiState.collectAsState()
-    val snackbarState   = remember { SnackbarHostState() }
-    val clipboardManager = LocalClipboardManager.current
-    val scrollManager   = rememberScrollManager()
-    val feedbackManager = rememberFeedbackManager()
+    val state by viewModel.uiState.collectAsState()
+    var showDetails by remember { mutableStateOf(false) }
+    val details = state.roomDetails
+    val title = state.conversation?.title ?: roomId
+    val subtitle = if (details?.keyRotationPending == true) "Private room · Key rotation in progress" else "Private room"
 
-    // ── Scroll + Haptic ───────────────────────────────────────────────────────
-    var lastSeenCount by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(uiState.messages.size) {
-        val messages    = uiState.messages
-        if (messages.isEmpty()) { lastSeenCount = 0; return@LaunchedEffect }
-
-        val isNew       = messages.size > lastSeenCount
-        val isSelf      = messages.last().userId == uiState.currentUser?.id
-        val isInitLoad  = lastSeenCount == 0
-
-        if (isNew && !isSelf && !isInitLoad) feedbackManager.onReceived()
-
-        lastSeenCount = messages.size
-
-        val shouldScroll = if (isSelf) scrollManager.shouldScrollForSelf
-                           else        scrollManager.shouldScrollForIncoming
-
-        if (shouldScroll) scrollManager.scrollToLatest(messages.size)
-    }
-
-    // ── Erreurs ───────────────────────────────────────────────────────────────
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { snackbarState.showSnackbar(it); viewModel.clearError() }
-    }
-
-    // ── UI ────────────────────────────────────────────────────────────────────
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarState) { Snackbar(snackbarData = it) } },
+    ConversationView(
+        conversationId = viewModel.conversationId,
+        state = state,
+        emptyText = "No messages yet.\nOnly members of this room can read it.",
         topBar = {
             NetPopUpTopBar(
-                title    = uiState.room?.code ?: roomId,
-                subtitle = "Private Room",
-                onBack   = onBack,
-                actions  = {
-                    val code = uiState.room?.code ?: roomId
-                    IconButton(onClick = { clipboardManager.setText(AnnotatedString(code)) }) {
-                        Icon(Icons.Filled.ContentCopy, "Copy code", tint = Primary)
+                title = title,
+                subtitle = subtitle,
+                onBack = onBack,
+                actions = {
+                    if (details != null) {
+                        IconButton(onClick = { showDetails = true }) {
+                            Icon(Icons.Filled.Info, "Members and security", tint = Primary)
+                        }
                     }
                 }
             )
         },
-        bottomBar = {
-            ChatInputBar(
-                onSend          = viewModel::sendMessage,
-                feedbackManager = feedbackManager,
-                autoFocus       = true
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            when {
-                uiState.isLoading -> CircularProgressIndicator(
-                    Modifier.align(Alignment.Center), color = Primary
-                )
+        onSend = viewModel::sendMessage,
+        onBlockSender = viewModel::blockSender,
+        onDeleteLocally = viewModel::deleteLocally,
+        onMarkRead = viewModel::markRead,
+        onErrorShown = viewModel::clearError
+    )
 
-                uiState.messages.isEmpty() -> Text(
-                    text     = "Share code \"${uiState.room?.code ?: roomId}\" to invite friends!",
-                    color    = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                    style    = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp)
-                )
+    if (showDetails && details != null) {
+        RoomDetailsDialog(title, details) { showDetails = false }
+    }
+}
 
-                else -> LazyColumn(
-                    state    = scrollManager.listState,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(uiState.messages, key = { it.id }) { message ->
-                        MessageBubble(
-                            message     = message,
-                            isSelf      = message.userId == uiState.currentUser?.id,
-                            onReport    = { viewModel.reportMessage(message.id) },
-                            onBlockUser = { viewModel.blockUser(message.userId) }
-                        )
-                    }
-                }
+@Composable
+private fun RoomDetailsDialog(title: String, details: RoomDetails, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        title = { Text(title) },
+        text = {
+            Column {
+                Text("Members (${details.members.size})", fontWeight = FontWeight.Bold)
+                details.members.forEach { Text(if (it.isSelf) "${it.displayName} (you)" else it.displayName) }
+                Text("Security fingerprint", fontWeight = FontWeight.Bold)
+                Text(details.securityFingerprint, fontFamily = FontFamily.Monospace)
+                Text("Compare it in person with another member.")
+                if (details.keyRotationPending) Text("Key rotation in progress: new keys are being shared.")
             }
         }
-    }
+    )
 }
