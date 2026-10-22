@@ -5,11 +5,12 @@ import com.netpopup.dtn.chat.ChatRepository
 import com.netpopup.dtn.chat.MeshStatus
 import com.netpopup.engine.EngineConfig
 import com.netpopup.engine.MeshChatRepository
+import com.netpopup.dtn.presentation.LifetimeChoices
 import com.netpopup.engine.MeshEngine
+import com.netpopup.settings.AppSettings
 import com.netpopup.storage.MeshDatabase
 import com.netpopup.transport.nearby.NearbyTransport
 import com.netpopup.transport.nearby.gms.GmsNearbyApi
-import com.netpopup.util.UsernameGenerator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -38,6 +39,7 @@ import javax.inject.Singleton
 class MeshRuntime @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: MeshDatabase,
+    private val settings: AppSettings,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
@@ -48,7 +50,10 @@ class MeshRuntime @Inject constructor(
             db = database.sql,
             transports = listOf(nearby),
             parentScope = engineScope,
-            config = EngineConfig(displayName = ::displayName),
+            config = EngineConfig(
+                displayName = { settings.snapshot.displayName },
+                messageLifetimeSeconds = { LifetimeChoices.toSeconds(settings.snapshot.lifetimeHours) },
+            ),
         )
     }
 
@@ -59,13 +64,15 @@ class MeshRuntime @Inject constructor(
     val status: StateFlow<MeshStatus> = _status.asStateFlow()
 
     @Volatile private var started = false
+    private var statusJob: kotlinx.coroutines.Job? = null
 
     fun start() {
         if (started) return
         started = true
         engineScope.launch {
             val e = engine.await()
-            launch { e.meshStatus.collect { _status.value = it } }
+            statusJob?.cancel()
+            statusJob = launch { e.meshStatus.collect { _status.value = it } }
             e.start()
         }
     }
@@ -74,16 +81,9 @@ class MeshRuntime @Inject constructor(
         if (!started) return
         started = false
         engineScope.launch {
+            statusJob?.cancel()
             engine.await().stop()
             _status.value = MeshStatus.STOPPED
-        }
-    }
-
-    /** Pseudo annoncé aux autres : tiré une fois puis gardé (préférences privées, non sensibles). */
-    private fun displayName(): String {
-        val prefs = context.getSharedPreferences("netpopup_identity", Context.MODE_PRIVATE)
-        return prefs.getString("display_name", null) ?: UsernameGenerator.generate().also {
-            prefs.edit().putString("display_name", it).apply()
         }
     }
 }

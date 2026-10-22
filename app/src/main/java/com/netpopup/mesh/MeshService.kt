@@ -15,6 +15,10 @@ import androidx.core.content.ContextCompat
 import com.netpopup.MainActivity
 import com.netpopup.R
 import com.netpopup.dtn.chat.MeshStatus
+import com.netpopup.dtn.presentation.ActiveConversation
+import com.netpopup.dtn.presentation.NotificationPolicy
+import com.netpopup.settings.AppSettings
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +43,10 @@ import kotlinx.coroutines.launch
 class MeshService : Service() {
 
     @Inject lateinit var runtime: MeshRuntime
+    @Inject lateinit var settings: AppSettings
+
+    private lateinit var notifier: MessageNotifier
+    private var notifyJob: Job? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var statusJob: Job? = null
@@ -47,6 +55,7 @@ class MeshService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        notifier = MessageNotifier(this).also { it.createChannel() }
         val channel = NotificationChannel(CHANNEL_ID, getString(R.string.mesh_channel_name), NotificationManager.IMPORTANCE_LOW)
             .apply { setShowBadge(false) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
@@ -77,11 +86,22 @@ class MeshService : Service() {
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(status))
             }
         }
+        notifyJob?.cancel()
+        notifyJob = scope.launch {
+            val repository = runtime.repository
+            repository.observeIncoming().collect { message ->
+                val blocked = repository.observeBlocked().first()
+                if (NotificationPolicy.shouldNotify(message, settings.snapshot.notificationsEnabled, blocked, ActiveConversation.current.value)) {
+                    notifier.show()
+                }
+            }
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         statusJob?.cancel()
+        notifyJob?.cancel()
         scope.cancel()
         runtime.stop()
         super.onDestroy()

@@ -3,7 +3,6 @@ package com.netpopup.ui.screen.privatechat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.netpopup.data.local.UserPreferences
 import com.netpopup.dtn.chat.ChatRepository
 import com.netpopup.dtn.chat.ConversationId
 import com.netpopup.dtn.chat.MessageId
@@ -18,8 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class PrivateChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    repository: ChatRepository,
-    userPreferences: UserPreferences
+    private val repository: ChatRepository
 ) : ViewModel() {
 
     val conversationId = ConversationId(checkNotNull(savedStateHandle["roomId"]))
@@ -28,8 +26,8 @@ class PrivateChatViewModel @Inject constructor(
         repository = repository,
         conversationId = conversationId,
         scope = viewModelScope,
-        blockedSenders = userPreferences.blockedUsersFlow,
-        blockSender = { userPreferences.blockUser(it) }
+        blockedSenders = repository.observeBlocked(),
+        blockSender = { repository.block(it) }
     )
 
     val uiState = presenter.state

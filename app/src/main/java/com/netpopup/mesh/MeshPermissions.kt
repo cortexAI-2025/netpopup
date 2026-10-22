@@ -13,6 +13,9 @@ object MeshPermissions {
     fun toRequest(context: Context): List<String> =
         PermissionPolicy.allRequested(Build.VERSION.SDK_INT).filterNot { isGranted(context, it) }
 
+    /** Toutes les permissions que le mesh utilise sur cette version d'Android, accordées ou non. */
+    fun allRequested(context: Context): List<String> = PermissionPolicy.allRequested(Build.VERSION.SDK_INT)
+
     /** Ce qui manque pour que Nearby accepte de démarrer (la notification n'est pas exigée). */
     fun missing(context: Context): List<String> =
         PermissionPolicy.missing(Build.VERSION.SDK_INT, granted(context))

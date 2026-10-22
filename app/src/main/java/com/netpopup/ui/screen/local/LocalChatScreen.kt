@@ -2,6 +2,7 @@ package com.netpopup.ui.screen.local
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import com.netpopup.ui.theme.Primary
 @Composable
 fun LocalChatScreen(
     onNavigateToRooms: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     viewModel: LocalChatViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -34,6 +36,9 @@ fun LocalChatScreen(
                 showBrandLogo = true,
                 subtitle = "Public room · $nearby",
                 actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Filled.Settings, "Settings", tint = Primary)
+                    }
                     IconButton(onClick = onNavigateToRooms) {
                         Icon(Icons.Filled.Lock, "Private Rooms", tint = Primary)
                     }
