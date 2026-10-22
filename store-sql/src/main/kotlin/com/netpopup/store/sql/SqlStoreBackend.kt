@@ -74,5 +74,8 @@ class SqlStoreBackend(private val db: SqlDatabase) : StoreBackend {
         n
     }
 
+    override fun tombstoneIds(): List<EnvelopeId> =
+        db.query("SELECT id FROM tombstone") { EnvelopeId(it.string(0)) }
+
     override fun tombstoneCount(): Int = db.query("SELECT COUNT(*) FROM tombstone") { it.int(0) }.first()
 }

@@ -127,6 +127,19 @@ class SqlStoreTest {
         assertEquals(1, db.query("SELECT COUNT(*) FROM envelope") { it.int(0) }.first())
     }
 
+    @Test fun knownIdsIncludeTombstonesAcrossARestart() {
+        val e = envelope(tag = 7)
+        run {
+            val db = open()
+            val store = EnvelopeStore(SqlStoreBackend(db))
+            store.insert(e, Origin.RELAY, t0)
+            store.markDelivered(e.id)
+            db.close()
+        }
+        val store = EnvelopeStore(SqlStoreBackend(open()))
+        assertTrue(e.id in store.knownIds())
+    }
+
     // ── Blocages ─────────────────────────────────────────────────────────────
 
     @Test fun blockListPersistsAndImportsTheLegacyList() {
