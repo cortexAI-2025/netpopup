@@ -60,3 +60,7 @@
     static void checkExpressionValueIsNotNull(java.lang.Object, java.lang.String);
     static void checkNotNullExpressionValue(java.lang.Object, java.lang.String);
 }
+
+# SQLCipher : classes appelées depuis le code natif (JNI)
+-keep class net.zetetic.database.** { *; }
+-keepclassmembers class net.zetetic.database.** { *; }

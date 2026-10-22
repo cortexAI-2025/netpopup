@@ -62,6 +62,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Exigé par libsignal-android (java.time, etc.)
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions { jvmTarget = "17" }
@@ -75,6 +77,8 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // Variante de test de libsignal (~65 Mo par ABI) : inutile dans l'application livrée
+        jniLibs { excludes += "**/libsignal_jni_testing.so" }
     }
 }
 
@@ -82,6 +86,10 @@ dependencies {
     // Mesh DTN
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
+    implementation(project(":store-sql"))
+    implementation(libs.sqlcipher.android)
+    implementation(libs.libsignal.android)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":transport-nearby"))
 
     // Core

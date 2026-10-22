@@ -17,6 +17,9 @@ tasks.withType<KotlinCompile>().configureEach {
 
 dependencies {
     implementation(project(":core-crypto"))
+    // Types de clés dans l'API de :core-crypto ; à l'exécution, l'app fournit libsignal-android.
+    compileOnly(libs.libsignal.client)
+    testImplementation(libs.libsignal.client)
 
     // Flow fait partie de l'API publique (ChatRepository)
     api(libs.kotlinx.coroutines.core)

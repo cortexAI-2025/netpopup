@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-// Crypto E2E — Kotlin pur. libsignal y sera ajouté à l'issue 9.
+// Crypto E2E. libsignal-client (JVM) n'est que compileOnly : l'app embarque libsignal-android,
+// qui expose les mêmes classes avec les bibliothèques natives Android.
 plugins {
     alias(libs.plugins.kotlin.jvm)
 }
@@ -15,5 +16,8 @@ tasks.withType<KotlinCompile>().configureEach {
 }
 
 dependencies {
+    compileOnly(libs.libsignal.client)
+    testImplementation(libs.libsignal.client)
+
     testImplementation(libs.junit)
 }

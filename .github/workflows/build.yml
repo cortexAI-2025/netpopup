@@ -116,7 +116,7 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :core-dtn:test :core-crypto:test --no-daemon --max-workers=1
+        run: gradle :core-dtn:test :core-crypto:test :store-sql:test --no-daemon --max-workers=1
 
       # Tests unitaires des modules Android : la logique du transport Nearby est du Kotlin pur,
       # mais le test de permissions lit le vrai AndroidManifest.xml du module.
@@ -156,6 +156,13 @@ jobs:
             "-Pandroid.injected.signing.store.password=ci_password" \
             "-Pandroid.injected.signing.key.alias=release" \
             "-Pandroid.injected.signing.key.password=ci_password"
+
+      - name: Report APK sizes
+        run: |
+          {
+            echo "### Taille des APK"
+            ls -l app/build/outputs/apk/*/*.apk | awk '{printf "- %s : %.1f Mo\n", $9, $5/1048576}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload signed release APK
         uses: actions/upload-artifact@v4
