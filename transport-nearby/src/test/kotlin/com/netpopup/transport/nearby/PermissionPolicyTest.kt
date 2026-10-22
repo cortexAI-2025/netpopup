@@ -22,7 +22,7 @@ class PermissionPolicyTest {
     @Test
     fun `Android 12 still needs precise location, with the three Bluetooth permissions`() {
         // Question ouverte de mesh-08 : la documentation Nearby l'exige encore sur l'API 31
-        assertEquals(bluetooth + PermissionPolicy.FINE_LOCATION, PermissionPolicy.runtimePermissions(31))
+        assertEquals(bluetooth + PermissionPolicy.FINE_LOCATION + PermissionPolicy.COARSE_LOCATION, PermissionPolicy.runtimePermissions(31))
     }
 
     @Test
@@ -82,5 +82,20 @@ class PermissionPolicyTest {
     fun `precise location is declared up to Android 12 only`() {
         val line = manifest().lines().single { it.contains(PermissionPolicy.FINE_LOCATION) }
         assertTrue(line, line.contains("android:maxSdkVersion=\"31\""))
+    }
+
+    @Test
+    fun `approximate location is requested only with the precise one on Android 12`() {
+        assertTrue(PermissionPolicy.COARSE_LOCATION in PermissionPolicy.runtimePermissions(31))
+        assertTrue(PermissionPolicy.COARSE_LOCATION !in PermissionPolicy.runtimePermissions(30))
+        assertTrue(PermissionPolicy.COARSE_LOCATION !in PermissionPolicy.runtimePermissions(32))
+        val line = manifest().lines().single { it.contains(PermissionPolicy.COARSE_LOCATION) }
+        assertTrue(line, line.contains("android:maxSdkVersion=\"31\""))
+    }
+
+    @Test
+    fun `granting only approximate location on Android 12 leaves the mesh blocked`() {
+        val granted = bluetooth + PermissionPolicy.COARSE_LOCATION
+        assertEquals(listOf(PermissionPolicy.FINE_LOCATION), PermissionPolicy.missing(31, granted))
     }
 }

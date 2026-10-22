@@ -43,7 +43,7 @@ class ManifestPermissionsTest {
     @Test fun nearbyPermissionsAreDeclared() {
         for (p in listOf(
             "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_ADVERTISE", "android.permission.BLUETOOTH_CONNECT",
-            "android.permission.NEARBY_WIFI_DEVICES", "android.permission.ACCESS_FINE_LOCATION",
+            "android.permission.NEARBY_WIFI_DEVICES", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION",
         )) assertTrue("$p manquante : $declared", p in declared)
     }
 
@@ -66,7 +66,7 @@ class ManifestPermissionsTest {
         val policy = com.netpopup.transport.nearby.PermissionPolicy
         assertTrue(policy.runtimePermissions(29) == listOf(policy.FINE_LOCATION))
         assertTrue(policy.runtimePermissions(30) == listOf(policy.FINE_LOCATION))
-        assertTrue(policy.FINE_LOCATION in policy.runtimePermissions(31) && policy.BLUETOOTH_SCAN in policy.runtimePermissions(31))
+        assertTrue(policy.FINE_LOCATION in policy.runtimePermissions(31) && policy.COARSE_LOCATION in policy.runtimePermissions(31) && policy.BLUETOOTH_SCAN in policy.runtimePermissions(31))
         assertFalse(policy.FINE_LOCATION in policy.runtimePermissions(32))
         assertTrue(policy.NEARBY_WIFI_DEVICES in policy.runtimePermissions(33))
         assertTrue(policy.POST_NOTIFICATIONS in policy.allRequested(34))

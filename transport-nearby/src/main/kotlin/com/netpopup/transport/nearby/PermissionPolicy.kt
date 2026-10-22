@@ -15,6 +15,7 @@ package com.netpopup.transport.nearby
 object PermissionPolicy {
 
     const val FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION"
+    const val COARSE_LOCATION = "android.permission.ACCESS_COARSE_LOCATION"
     const val BLUETOOTH_SCAN = "android.permission.BLUETOOTH_SCAN"
     const val BLUETOOTH_ADVERTISE = "android.permission.BLUETOOTH_ADVERTISE"
     const val BLUETOOTH_CONNECT = "android.permission.BLUETOOTH_CONNECT"
@@ -42,7 +43,8 @@ object PermissionPolicy {
     fun runtimePermissions(sdkInt: Int): List<String> = when {
         sdkInt < ANDROID_10 -> throw IllegalArgumentException("minSdk is 29, got $sdkInt")
         sdkInt < ANDROID_12 -> listOf(FINE_LOCATION)
-        sdkInt == ANDROID_12 -> bluetooth() + FINE_LOCATION
+        // API 31 : l'utilisateur peut n'accorder que l'approximative, d'où la demande des deux (le précis reste exigé).
+        sdkInt == ANDROID_12 -> bluetooth() + FINE_LOCATION + COARSE_LOCATION
         sdkInt == ANDROID_12L -> bluetooth()
         else -> bluetooth() + NEARBY_WIFI_DEVICES
     }

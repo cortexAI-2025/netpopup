@@ -152,6 +152,16 @@ jobs:
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: gradle :app:lintDebug :transport-nearby:lintDebug --no-daemon --max-workers=1
 
+      - name: "Lint — errors"
+        if: always()
+        shell: bash
+        run: |
+          for f in app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt transport-nearby/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt; do
+            [ -f "$f" ] || continue
+            echo "== $f"
+            grep -A4 -E '(^|: )Error: ' "$f" | head -120
+          done
+
       - name: "Lint — summary"
         if: always()
         shell: bash

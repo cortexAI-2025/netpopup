@@ -51,7 +51,7 @@ exposés par l'application, donc **mesurés à la main** (§7).
 | Android | Attendu à l'onboarding |
 |---|---|
 | 10-11 (API 29-30) | position précise |
-| 12 (API 31) | Bluetooth (scan, advertise, connect) **et** position précise |
+| 12 (API 31) | Bluetooth (scan, advertise, connect) **et** position précise + approximative (si l'utilisateur n'accorde que l'approximative, le mesh reste bloqué et l'app l'indique) |
 | 12L (API 32) | Bluetooth (scan, advertise, connect) |
 | 13+ (API 33+) | Bluetooth + appareils Wi-Fi proches + notifications |
 

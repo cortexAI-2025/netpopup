@@ -22,7 +22,7 @@ Au premier lancement, l'app demande les permissions en une fois.
 | Android | Permissions attendues |
 |---|---|
 | 10-11 (API 29-30) | Position précise |
-| 12 (API 31) | Bluetooth (appareils à proximité) **et position précise** |
+| 12 (API 31) | Bluetooth (appareils à proximité) **et position précise + approximative** (lint CoarseFineLocation) |
 | 12L (API 32) | Bluetooth (appareils à proximité) |
 | 13+ (API 33+) | Bluetooth, appareils Wi-Fi à proximité, notifications |
 

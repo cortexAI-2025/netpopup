@@ -44,6 +44,7 @@ import com.netpopup.ui.theme.TextSecondary
 /** Raison, en clair, de chaque permission demandée. */
 private fun reasonFor(permission: String): String? = when (permission) {
     Manifest.permission.ACCESS_FINE_LOCATION -> "Location — Android requires it to scan for nearby phones over Bluetooth. Your position is never stored or sent."
+    Manifest.permission.ACCESS_COARSE_LOCATION -> "Approximate location — Android 12 asks for it together with precise location. Choose \"Precise\" when prompted."
     Manifest.permission.BLUETOOTH_SCAN -> "Bluetooth scan — find nearby phones."
     Manifest.permission.BLUETOOTH_ADVERTISE -> "Bluetooth advertise — let nearby phones find you."
     Manifest.permission.BLUETOOTH_CONNECT -> "Bluetooth connect — exchange messages with a nearby phone."

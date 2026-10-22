@@ -14,6 +14,9 @@
 
     <!-- Position précise : exigée jusqu'à Android 12 (API 31) compris, plus ensuite -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="31" />
+    <!-- Android 12 (API 31) exige de demander la position approximative avec la précise (l'utilisateur peut n'accorder que
+         l'approximative : Nearby ne démarre alors pas, voir PermissionPolicy.missing). Lint : CoarseFineLocation. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="31" />
 
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
