@@ -36,6 +36,16 @@ internal object RoomKeys {
         return ChannelKeys.derive(secret, "join/${roomId.hex()}")
     }
 
+    /**
+     * File de réponse d'une demande d'accès : celui qui accepte écrit ici, car le demandeur ne
+     * connaît pas encore son identité (n'importe quel membre peut accepter). Dérivée du code et de
+     * la clé d'identité du demandeur ; le contenu reste protégé par la session 1:1.
+     */
+    fun reply(code: ByteArray, roomId: ByteArray, requester: ByteArray): ChannelKeys {
+        val secret = Hkdf.derive(code, "netpopup/v0/reply".toByteArray(), roomId + requester, 32)
+        return ChannelKeys.derive(secret, "reply/${roomId.hex()}/${requester.hex()}")
+    }
+
     fun epoch(secret: ByteArray, roomId: ByteArray, epoch: Int): ChannelKeys =
         ChannelKeys.derive(secret, "room/${roomId.hex()}/$epoch")
 
@@ -161,10 +171,33 @@ class RoomState internal constructor(
     internal var headerSignature: ByteArray = headerSignature
     private val memberList = ArrayList(members)
     internal val retired = ArrayList<RetiredEpoch>()
-    private val pendingRotation = LinkedHashSet<String>()
+    internal val pendingRotation = LinkedHashSet<String>()
 
     val members: List<IdentityKey> get() = memberList.toList()
     val keys: ChannelKeys get() = RoomKeys.epoch(secret, roomId, epoch)
+
+    /** Clés de la file des demandes d'accès à cette room (les membres l'écoutent). */
+    val joinKeys: ChannelKeys get() = RoomKeys.join(inviteCode, roomId)
+
+    /** Clés de la file de réponse destinée à [requester] (clé d'identité sérialisée). */
+    fun replyKeys(requester: IdentityKey): ChannelKeys = RoomKeys.reply(inviteCode, roomId, requester.serialize())
+
+    /** Membres dont une nouvelle Sender Key est attendue après un retrait. */
+    val pendingRotationIds: Set<String> get() = pendingRotation.toSet()
+
+    /** Sérialise tout l'état pour la base chiffrée (secret compris : à ne stocker que chiffré). */
+    fun encode(): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val d = java.io.DataOutputStream(out)
+        d.writeByte(1)
+        d.write(roomId); d.writeUTF(name); d.write(creator.serialize()); d.writeByte(policy.code.toInt())
+        d.write(inviteCode); d.writeInt(epoch); d.write(secret)
+        d.write(header.encode()); d.write(headerSignature)
+        d.writeByte(memberList.size); memberList.forEach { d.write(it.serialize()) }
+        d.writeByte(retired.size); retired.forEach { d.writeInt(it.epoch); d.write(it.secret); d.writeLong(it.retiredAtMillis) }
+        d.writeByte(pendingRotation.size); pendingRotation.forEach { d.writeUTF(it) }
+        return out.toByteArray()
+    }
 
     /** Vrai tant que des membres n'ont pas encore émis leurs nouvelles Sender Keys après un retrait. */
     val rotationInProgress: Boolean get() = pendingRotation.isNotEmpty()
@@ -195,6 +228,27 @@ class RoomState internal constructor(
 
     companion object {
         const val MAX_MEMBERS = 32
+
+        fun decode(bytes: ByteArray): RoomState {
+            try {
+                val d = java.io.DataInputStream(bytes.inputStream())
+                fun read(n: Int) = ByteArray(n).also { d.readFully(it) }
+                if (d.readByte().toInt() != 1) throw RoomException("unsupported room state version")
+                val roomId = read(16); val name = d.readUTF(); val creator = IdentityKey(read(33))
+                val policy = AdmissionPolicy.of(d.readByte()); val code = read(16)
+                val epoch = d.readInt(); val secret = read(32)
+                val header = RoomHeader.decode(java.nio.ByteBuffer.wrap(read(RoomHeader.SIZE))); val sig = read(64)
+                val members = List(d.readByte().toInt()) { IdentityKey(read(33)) }
+                val state = RoomState(roomId, name, creator, policy, code, epoch, secret, header, sig, members)
+                repeat(d.readByte().toInt()) { state.retired.add(RetiredEpoch(d.readInt(), read(32), d.readLong())) }
+                repeat(d.readByte().toInt()) { state.pendingRotation.add(d.readUTF()) }
+                return state
+            } catch (e: RoomException) {
+                throw e
+            } catch (e: Exception) {
+                throw RoomException("corrupted room state")
+            }
+        }
 
         /** 24 h de durée de vie maximale + 2 h de tolérance d'horloge. */
         const val GRACE_MILLIS = 26L * 3600 * 1000

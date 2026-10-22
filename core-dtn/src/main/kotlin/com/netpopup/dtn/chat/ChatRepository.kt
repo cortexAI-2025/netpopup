@@ -48,12 +48,22 @@ interface ChatRepository {
     ): RoomInvite
 
     /**
-     * Demande l'accès à une room avec son code. Le code ne donne aucun accès
-     * aux messages : il faut qu'un membre autorisé accepte.
+     * Demande l'accès à une room avec son lien d'invitation complet. Le lien ne donne aucun accès aux
+     * messages : il faut qu'un membre autorisé accepte.
      *
-     * @throws InvalidRoomCodeException si le code est mal formé ([MessageRules.normalizeRoomCode]).
+     * @throws InvalidInviteException si le lien est mal formé, altéré ou n'est pas une invitation.
      */
-    suspend fun requestToJoin(code: String): PendingJoin
+    suspend fun requestToJoin(inviteLink: String): PendingJoin
+
+    /**
+     * Ajoute un contact depuis son lien (QR en personne, ou annonce) et ouvre la conversation 1:1.
+     *
+     * @throws InvalidInviteException si le lien est mal formé ou si ses signatures sont fausses.
+     */
+    suspend fun addContact(contactLink: String): ConversationId
+
+    /** Notre lien de contact, à montrer en QR ; il change quand la pré-clé hebdomadaire est renouvelée. */
+    suspend fun myContactLink(): String
 
     /** Demandes d'accès envoyées par cet appareil et pas encore acceptées. */
     fun observePendingJoins(): Flow<List<PendingJoin>>
@@ -77,7 +87,8 @@ interface ChatRepository {
 
 class InvalidMessageException(message: String) : IllegalArgumentException(message)
 
-class InvalidRoomCodeException(message: String) : IllegalArgumentException(message)
+/** Lien d'invitation ou de contact mal formé, altéré ou d'un autre type. */
+class InvalidInviteException(message: String) : IllegalArgumentException(message)
 
 class UnknownConversationException(id: ConversationId) :
     NoSuchElementException("Unknown conversation: ${id.value}")

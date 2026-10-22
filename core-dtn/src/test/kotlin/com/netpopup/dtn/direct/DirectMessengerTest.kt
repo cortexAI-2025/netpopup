@@ -30,8 +30,8 @@ class DirectMessengerTest {
         val store = EnvelopeStore()
         lateinit var chat: DirectMessenger
 
-        fun connectTo(other: Device) {
-            chat = DirectMessenger(identity, other.identity.publicKey, session, store) { nowMs }
+        fun connectTo(other: Device, pending: PendingSendStore = NoPendingSendStore) {
+            chat = DirectMessenger(identity, other.identity.publicKey, session, store, { nowMs }, pending)
         }
     }
 
@@ -197,5 +197,42 @@ class DirectMessengerTest {
         alice.chat.send(worst)
         val size = alice.store.all().single().envelope.size
         assertTrue("enveloppe de $size octets", size <= Envelope.MAX_SIZE)
+    }
+
+    // ── Messages de contrôle et redémarrage ──────────────────────────────────
+
+    private class MapPendingStore : PendingSendStore {
+        val rows = HashMap<String, PendingSend>()
+        override fun load(peer: String) = rows.values.toList()
+        override fun save(peer: String, send: PendingSend) { rows[send.tokenHash] = send }
+    }
+
+    @Test fun controlMessagesAreDeliveredAndAcknowledgedButNeverShownAsText() {
+        val (alice, bob) = pair()
+        val payload = byteArrayOf(2, 9, 8, 7)
+        val sent = alice.chat.sendControl(payload)
+        val event = meet(alice, bob).single() as DirectEvent.ControlReceived
+        assertTrue(payload.contentEquals(event.payload))
+        assertEquals(DirectEvent.Acknowledged(sent.messageId), meet(bob, alice).single())
+        // Le relais d'état ne renvoie pas d'identifiant de message pour un contrôle.
+        val second = alice.chat.sendControl(byteArrayOf(1))
+        assertNull(alice.chat.markRelayed(second.envelopeId))
+    }
+
+    @Test fun pendingAcknowledgementsSurviveARestartOfTheSender() {
+        val alice = Device("Alice"); val bob = Device("Bob")
+        alice.session.start(bob.bundle)
+        val persisted = MapPendingStore()
+        alice.connectTo(bob, persisted); bob.connectTo(alice)
+        val sent = alice.chat.send("avant le redémarrage")
+        assertNotNull(alice.chat.markRelayed(sent.envelopeId))
+        meet(alice, bob)
+
+        // Redémarrage : nouvel objet DirectMessenger, mêmes stockages.
+        alice.connectTo(bob, persisted)
+        assertEquals(DeliveryState.RELAYED, alice.chat.deliveryState(sent.messageId))
+        assertTrue(alice.chat.owns(sent.envelopeId))
+        assertEquals(DirectEvent.Acknowledged(sent.messageId), meet(bob, alice).single())
+        assertEquals(DeliveryState.ACKNOWLEDGED, alice.chat.deliveryState(sent.messageId))
     }
 }

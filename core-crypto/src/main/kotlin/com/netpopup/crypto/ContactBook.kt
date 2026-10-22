@@ -20,8 +20,13 @@ class Contact(val bundle: ContactBundle, val trust: ContactTrust) {
  * est identifié par sa clé d'identité, jamais par son pseudo : deux contacts de même nom
  * restent distincts, et une annonce ne peut ni écraser un contact vérifié ni le rétrograder.
  */
-class ContactBook {
+class ContactBook(private val onChanged: (Contact) -> Unit = {}) {
     private val contacts = LinkedHashMap<String, Contact>()
+
+    /** Recharge un contact depuis le stockage, sans déclencher l'écriture. */
+    fun restore(contact: Contact) {
+        contacts[key(contact.identityKey)] = contact
+    }
 
     fun all(): List<Contact> = contacts.values.toList()
 
@@ -33,7 +38,9 @@ class ContactBook {
 
     fun markVerified(identity: IdentityKey) {
         val c = find(identity) ?: return
-        contacts[key(identity)] = Contact(c.bundle, ContactTrust.VERIFIED)
+        val upgraded = Contact(c.bundle, ContactTrust.VERIFIED)
+        contacts[key(identity)] = upgraded
+        onChanged(upgraded)
     }
 
     private fun put(bundle: ContactBundle, trust: ContactTrust): Contact {
@@ -44,6 +51,7 @@ class ContactBook {
             else -> Contact(bundle, maxOf(existing.trust, trust))
         }
         contacts[key(bundle.identityKey)] = merged
+        onChanged(merged)
         return merged
     }
 

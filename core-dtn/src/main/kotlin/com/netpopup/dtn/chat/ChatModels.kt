@@ -74,15 +74,21 @@ data class ChatMessage(
     val readAt: Long? = null
 )
 
-/** Room créée localement, avec le code à partager pour demander l'accès. */
+/**
+ * Room créée localement, avec le lien d'invitation à partager (en personne, par QR ou texte).
+ * Le lien porte tout ce qu'il faut pour demander l'accès — room, code, créateur, politique — mais
+ * ne donne aucun accès aux messages : un membre doit accepter.
+ */
 data class RoomInvite(
     val conversationId: ConversationId,
-    val code: String
+    val link: String
 )
 
 /** Demande d'accès envoyée par cet appareil, en attente d'un membre. */
 data class PendingJoin(
-    val code: String,
+    /** Identifiant court et stable de l'invitation, pour l'affichage. */
+    val inviteId: String,
+    val roomName: String,
     val requestedAt: Long
 )
 

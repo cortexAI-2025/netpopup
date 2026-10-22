@@ -5,7 +5,7 @@ import com.netpopup.dtn.chat.ChatRepository
 import com.netpopup.dtn.chat.Conversation
 import com.netpopup.dtn.chat.ConversationId
 import com.netpopup.dtn.chat.ConversationKind
-import com.netpopup.dtn.chat.InvalidRoomCodeException
+import com.netpopup.dtn.chat.InvalidInviteException
 import com.netpopup.dtn.chat.JoinRequest
 import com.netpopup.dtn.chat.PendingJoin
 import com.netpopup.dtn.chat.RoomInvite
@@ -22,8 +22,13 @@ data class RoomsUiState(
     val rooms: List<Conversation> = emptyList(),
     val title: String = "",
     val admission: AdmissionPolicy = AdmissionPolicy.ANY_MEMBER,
-    val joinCode: String = "",
-    /** Dernière room créée : son code est à montrer à ceux qui doivent la rejoindre. */
+    /** Lien d'invitation collé ou scanné pour demander l'accès à une room. */
+    val inviteLink: String = "",
+    /** Notre lien de contact, à montrer en QR ou à copier. */
+    val myContactLink: String? = null,
+    /** Lien de contact d'un tiers, collé ou scanné. */
+    val contactLink: String = "",
+    /** Dernière room créée : son lien est à partager avec ceux qui doivent la rejoindre. */
     val createdInvite: RoomInvite? = null,
     /** Demandes envoyées par cet appareil, en attente d'un membre. */
     val pendingJoins: List<PendingJoin> = emptyList(),
@@ -48,6 +53,14 @@ class RoomsPresenter(
                 _state.update { it.copy(rooms = all.filter { c -> c.kind == ConversationKind.ROOM }) }
             }
         }
+        scope.launch {
+            try {
+                val link = repository.myContactLink()
+                _state.update { it.copy(myContactLink = link) }
+            } catch (e: Exception) {
+                // Le lien de contact est un confort : l'écran reste utilisable sans.
+            }
+        }
         scope.launch { repository.observePendingJoins().collect { p -> _state.update { it.copy(pendingJoins = p) } } }
         scope.launch { repository.observeJoinRequests().collect { r -> _state.update { it.copy(joinRequests = r) } } }
     }
@@ -56,7 +69,9 @@ class RoomsPresenter(
 
     fun onAdmissionChanged(policy: AdmissionPolicy) = _state.update { it.copy(admission = policy) }
 
-    fun onJoinCodeChanged(code: String) = _state.update { it.copy(joinCode = code.uppercase().take(MAX_CODE_INPUT)) }
+    fun onInviteLinkChanged(link: String) = _state.update { it.copy(inviteLink = link.take(MAX_LINK_INPUT)) }
+
+    fun onContactLinkChanged(link: String) = _state.update { it.copy(contactLink = link.take(MAX_LINK_INPUT)) }
 
     fun createRoom() {
         val title = _state.value.title.trim()
@@ -77,16 +92,32 @@ class RoomsPresenter(
         }
     }
 
-    /** Envoie une demande d'accès. Le code ne donne aucun accès : la room n'apparaît qu'une fois acceptée. */
+    /** Envoie une demande d'accès. Le lien ne donne aucun accès : la room n'apparaît qu'une fois acceptée. */
     fun requestToJoin() {
-        val code = _state.value.joinCode
+        val link = _state.value.inviteLink
         _state.update { it.copy(isLoading = true, error = null) }
         scope.launch {
             try {
-                repository.requestToJoin(code)
-                _state.update { it.copy(isLoading = false, joinCode = "") }
-            } catch (e: InvalidRoomCodeException) {
-                _state.update { it.copy(isLoading = false, error = e.message ?: INVALID_CODE) }
+                repository.requestToJoin(link)
+                _state.update { it.copy(isLoading = false, inviteLink = "") }
+            } catch (e: InvalidInviteException) {
+                _state.update { it.copy(isLoading = false, error = e.message ?: INVALID_LINK) }
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = e.message ?: GENERIC_ERROR) }
+            }
+        }
+    }
+
+    /** Ajoute un contact depuis son lien et ouvre la conversation. */
+    fun addContact() {
+        val link = _state.value.contactLink
+        _state.update { it.copy(isLoading = true, error = null) }
+        scope.launch {
+            try {
+                val id = repository.addContact(link)
+                _state.update { it.copy(isLoading = false, contactLink = "", navigateTo = id) }
+            } catch (e: InvalidInviteException) {
+                _state.update { it.copy(isLoading = false, error = e.message ?: INVALID_LINK) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: GENERIC_ERROR) }
             }
@@ -113,9 +144,9 @@ class RoomsPresenter(
 
     companion object {
         const val MAX_TITLE = 32
-        const val MAX_CODE_INPUT = 64
+        const val MAX_LINK_INPUT = 3_000
         const val TITLE_REQUIRED = "Give the room a name"
-        const val INVALID_CODE = "Invalid room code"
+        const val INVALID_LINK = "Invalid link"
         const val GENERIC_ERROR = "Something went wrong"
     }
 }

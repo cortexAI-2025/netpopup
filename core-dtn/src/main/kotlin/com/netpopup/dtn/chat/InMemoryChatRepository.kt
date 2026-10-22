@@ -37,7 +37,7 @@ class InMemoryChatRepository(
     private val messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     private val pendingJoins = MutableStateFlow<List<PendingJoin>>(emptyList())
     private val joinRequests = MutableStateFlow<List<JoinRequest>>(emptyList())
-    private val roomCodes = mutableMapOf<String, ConversationId>()
+    private val roomLinks = mutableMapOf<String, ConversationId>()
     private val mesh = MutableStateFlow(MeshStatus.STOPPED)
 
     override val meshStatus: StateFlow<MeshStatus> = mesh.asStateFlow()
@@ -91,17 +91,30 @@ class InMemoryChatRepository(
 
     override suspend fun createRoom(title: String, admission: AdmissionPolicy): RoomInvite {
         val id = ConversationId(newId("room"))
-        val code = generateUniqueCode()
-        roomCodes[code] = id
+        val link = generateUniqueLink()
+        roomLinks[link] = id
         conversations.update { it + Conversation(id, ConversationKind.ROOM, title, admission) }
-        return RoomInvite(id, code)
+        return RoomInvite(id, link)
     }
 
-    override suspend fun requestToJoin(code: String): PendingJoin {
-        val pending = PendingJoin(MessageRules.normalizeRoomCode(code), now())
-        pendingJoins.update { list -> list.filterNot { it.code == pending.code } + pending }
+    override suspend fun requestToJoin(inviteLink: String): PendingJoin {
+        val link = MessageRules.normalizeInviteLink(inviteLink)
+        val pending = PendingJoin(inviteIdOf(link), "Private room", now())
+        pendingJoins.update { list -> list.filterNot { it.inviteId == pending.inviteId } + pending }
         return pending
     }
+
+    override suspend fun addContact(contactLink: String): ConversationId {
+        val link = MessageRules.normalizeContactLink(contactLink)
+        val id = ConversationId("direct-" + link.removePrefix(MessageRules.CONTACT_LINK_PREFIX).take(12))
+        if (conversations.value.none { it.id == id }) {
+            conversations.update { it + Conversation(id, ConversationKind.DIRECT, "Contact") }
+        }
+        return id
+    }
+
+    override suspend fun myContactLink(): String =
+        MessageRules.CONTACT_LINK_PREFIX + "A".repeat(MessageRules.MIN_CONTACT_LINK_BODY)
 
     override fun observePendingJoins(): Flow<List<PendingJoin>> = pendingJoins
 
@@ -131,7 +144,7 @@ class InMemoryChatRepository(
         conversations.update { list -> list.filterNot { it.id == conversationId } }
         messages.update { all -> all.filterNot { it.conversationId == conversationId } }
         joinRequests.update { list -> list.filterNot { it.conversationId == conversationId } }
-        roomCodes.values.remove(conversationId)
+        roomLinks.values.remove(conversationId)
     }
 
     // ── Simulation des autres appareils ──────────────────────────────────────
@@ -160,10 +173,10 @@ class InMemoryChatRepository(
     }
 
     /** Un membre accepte notre demande : la room apparaît, la demande disparaît. */
-    fun simulateJoinAccepted(code: String, title: String): ConversationId {
-        val normalized = MessageRules.normalizeRoomCode(code)
+    fun simulateJoinAccepted(inviteLink: String, title: String): ConversationId {
+        val normalized = MessageRules.normalizeInviteLink(inviteLink)
         val id = ConversationId(newId("room"))
-        pendingJoins.update { list -> list.filterNot { it.code == normalized } }
+        pendingJoins.update { list -> list.filterNot { it.inviteId == inviteIdOf(normalized) } }
         conversations.update { it + Conversation(id, ConversationKind.ROOM, title, AdmissionPolicy.ANY_MEMBER) }
         return id
     }
@@ -203,12 +216,15 @@ class InMemoryChatRepository(
         }
     }
 
-    private fun generateUniqueCode(): String {
+    private fun inviteIdOf(link: String): String = link.removePrefix(MessageRules.ROOM_LINK_PREFIX).take(8)
+
+    /** Lien factice mais de la bonne forme : 68 octets aléatoires, comme une vraie invitation. */
+    private fun generateUniqueLink(): String {
         while (true) {
-            val code = (1..MessageRules.ROOM_CODE_LENGTH)
-                .map { MessageRules.ROOM_CODE_ALPHABET[random.nextInt(MessageRules.ROOM_CODE_ALPHABET.length)] }
-                .joinToString("")
-            if (code !in roomCodes) return code
+            val body = ByteArray(68).also { random.nextBytes(it) }
+            val link = MessageRules.ROOM_LINK_PREFIX +
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(body)
+            if (link !in roomLinks) return link
         }
     }
 

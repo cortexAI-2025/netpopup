@@ -56,7 +56,9 @@ class SyncSession(
     private val incoming = TokenBucket(burst, perSecond)
     private val queue = ArrayDeque<StoredEnvelope>()
     private var started = false
-    private var peerInventoryReceived = false
+    /** Vrai une fois un `INVENTORY` bien formé reçu : preuve que le pair parle notre protocole. */
+    var peerInventoryReceived = false
+        private set
 
     var stats = SyncStats()
         private set

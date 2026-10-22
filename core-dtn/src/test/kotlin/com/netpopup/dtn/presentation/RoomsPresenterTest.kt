@@ -4,7 +4,9 @@ import com.netpopup.dtn.chat.AdmissionPolicy
 import com.netpopup.dtn.chat.ConversationKind
 import com.netpopup.dtn.chat.InMemoryChatRepository
 import com.netpopup.dtn.chat.LOCAL_CONVERSATION_ID
+import com.netpopup.dtn.chat.MessageRules
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -25,7 +27,7 @@ class RoomsPresenterTest {
         p.onAdmissionChanged(AdmissionPolicy.CREATOR_ONLY)
         p.createRoom(); runCurrent()
         val s = p.state.value
-        assertEquals(6, s.createdInvite!!.code.length)
+        assertEquals(s.createdInvite!!.link, MessageRules.normalizeInviteLink(s.createdInvite!!.link))
         assertEquals(s.createdInvite!!.conversationId, s.navigateTo)
         assertEquals(AdmissionPolicy.CREATOR_ONLY, s.rooms.single().admission)
         assertEquals("Voisins", s.rooms.single().title)
@@ -50,28 +52,46 @@ class RoomsPresenterTest {
         assertTrue(p.state.value.rooms.none { it.id == LOCAL_CONVERSATION_ID })
     }
 
+    private val link = MessageRules.ROOM_LINK_PREFIX + "Qk7B2".repeat(19)
+
     @Test fun requestToJoinShowsAPendingRequestUntilAccepted() = runTest {
         val repo = InMemoryChatRepository()
         val p = presenter(repo)
-        p.onJoinCodeChanged("xk7b2q")
-        assertEquals("XK7B2Q", p.state.value.joinCode)
+        p.onInviteLinkChanged(link)
         p.requestToJoin(); runCurrent()
-        assertEquals(listOf("XK7B2Q"), p.state.value.pendingJoins.map { it.code })
-        assertEquals("", p.state.value.joinCode)
-        assertTrue(p.state.value.rooms.isEmpty()) // le code ne donne pas accès
+        assertEquals(1, p.state.value.pendingJoins.size)
+        assertEquals("", p.state.value.inviteLink)
+        assertTrue(p.state.value.rooms.isEmpty()) // le lien ne donne pas accès
 
-        repo.simulateJoinAccepted("XK7B2Q", "Voisins"); runCurrent()
+        repo.simulateJoinAccepted(link, "Voisins"); runCurrent()
         assertTrue(p.state.value.pendingJoins.isEmpty())
         assertEquals(listOf("Voisins"), p.state.value.rooms.map { it.title })
     }
 
-    @Test fun malformedCodeShowsAnError() = runTest {
+    @Test fun oldSixCharacterCodesAndGarbageAreRefused() = runTest {
         val p = presenter(InMemoryChatRepository())
-        p.onJoinCodeChanged("ABC")
-        p.requestToJoin(); runCurrent()
-        assertNotNull(p.state.value.error)
+        for (bad in listOf("XK7B2Q", "netpopup://room/short", "https://x.y/" + "A".repeat(100))) {
+            p.onInviteLinkChanged(bad)
+            p.requestToJoin(); runCurrent()
+            assertNotNull(bad, p.state.value.error)
+            p.clearError()
+        }
         assertTrue(p.state.value.pendingJoins.isEmpty())
         assertEquals(false, p.state.value.isLoading)
+    }
+
+    @Test fun contactsAreAddedFromTheirLinkAndOpenTheConversation() = runTest {
+        val repo = InMemoryChatRepository()
+        val p = presenter(repo)
+        runCurrent()
+        assertNotNull(p.state.value.myContactLink)
+        p.onContactLinkChanged(MessageRules.CONTACT_LINK_PREFIX + "C".repeat(300))
+        p.addContact(); runCurrent()
+        val id = p.state.value.navigateTo!!
+        assertEquals(ConversationKind.DIRECT, repo.observeConversations().first().single { it.id == id }.kind)
+        p.onContactLinkChanged(link) // une invitation de room n'est pas un contact
+        p.addContact(); runCurrent()
+        assertNotNull(p.state.value.error)
     }
 
     @Test fun incomingRequestsCanBeApprovedOrRejected() = runTest {
