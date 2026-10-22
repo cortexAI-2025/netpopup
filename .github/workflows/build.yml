@@ -111,6 +111,17 @@ jobs:
         run: gradle assembleDebug --no-daemon --max-workers=1
 
 
+      # Permissions réellement présentes dans l'APK (manifeste fusionné, dépendances comprises).
+      - name: "Merged manifest — permissions"
+        shell: bash
+        run: |
+          f=$(find app/build/intermediates -path '*debug*' -name AndroidManifest.xml | grep -i merged | head -1)
+          echo "manifeste : $f"
+          {
+            echo "### Permissions du manifeste fusionné (debug)"
+            grep -o 'uses-permission[^>]*android:name="[^"]*"[^>]*' "$f" | sed 's/.*android:name="\([^"]*\)"\(.*\)/- \1\2/'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: "Unit tests — JVM core modules"
         shell: bash
         env:
