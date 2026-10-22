@@ -88,6 +88,7 @@ dependencies {
     implementation(project(":store-sql"))
     implementation(project(":mesh-engine"))
     implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.sqlite) // supertype de SQLiteDatabase (SQLCipher) : requis pour compiler
     implementation(libs.libsignal.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":transport-nearby"))

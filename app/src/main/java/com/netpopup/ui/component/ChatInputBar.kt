@@ -31,7 +31,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.netpopup.data.model.Message.Companion.MAX_LENGTH
+import com.netpopup.dtn.chat.MessageRules.MAX_BODY_LENGTH as MAX_LENGTH
 import com.netpopup.ui.theme.Outline
 import com.netpopup.ui.theme.Primary
 import com.netpopup.ui.theme.Surface
