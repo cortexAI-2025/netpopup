@@ -42,16 +42,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netpopup.dtn.chat.AdmissionPolicy
 import com.netpopup.dtn.chat.Conversation
 import com.netpopup.dtn.chat.ConversationId
 import com.netpopup.dtn.chat.ConversationKind
 import com.netpopup.dtn.chat.JoinRequest
+import androidx.compose.ui.text.style.TextOverflow
 import com.netpopup.dtn.chat.PendingJoin
 import com.netpopup.dtn.chat.RoomInvite
 import com.netpopup.dtn.presentation.RoomsUiState
@@ -67,7 +66,9 @@ class RoomsActions(
     val onTitleChanged: (String) -> Unit = {},
     val onAdmissionChanged: (AdmissionPolicy) -> Unit = {},
     val onCreate: () -> Unit = {},
-    val onJoinCodeChanged: (String) -> Unit = {},
+    val onInviteLinkChanged: (String) -> Unit = {},
+    val onContactLinkChanged: (String) -> Unit = {},
+    val onAddContact: () -> Unit = {},
     val onRequestToJoin: () -> Unit = {},
     val onApprove: (String) -> Unit = {},
     val onReject: (String) -> Unit = {},
@@ -114,7 +115,9 @@ fun RoomsScreen(
                 onTitleChanged = viewModel::onTitleChanged,
                 onAdmissionChanged = viewModel::onAdmissionChanged,
                 onCreate = viewModel::createRoom,
-                onJoinCodeChanged = viewModel::onJoinCodeChanged,
+                onInviteLinkChanged = viewModel::onInviteLinkChanged,
+                onContactLinkChanged = viewModel::onContactLinkChanged,
+                onAddContact = viewModel::addContact,
                 onRequestToJoin = viewModel::requestToJoin,
                 onApprove = viewModel::approve,
                 onReject = viewModel::reject,
@@ -170,16 +173,14 @@ fun RoomsContent(state: RoomsUiState, actions: RoomsActions, modifier: Modifier 
         item { SectionHeader("Ask to join a room") }
         item {
             OutlinedTextField(
-                value = state.joinCode,
-                onValueChange = actions.onJoinCodeChanged,
-                placeholder = { Text("Room code", color = TextSecondary) },
+                value = state.inviteLink,
+                onValueChange = actions.onInviteLinkChanged,
+                placeholder = { Text("Paste the invitation link", color = TextSecondary) },
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontFamily = FontFamily.Monospace, letterSpacing = 4.sp, color = TextPrimary
-                ),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                 keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Characters,
-                    keyboardType = KeyboardType.Text,
+                    capitalization = KeyboardCapitalization.None,
+                    keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Done
                 ),
                 colors = fieldColors(),
@@ -188,19 +189,46 @@ fun RoomsContent(state: RoomsUiState, actions: RoomsActions, modifier: Modifier 
             )
         }
         item {
-            PrimaryButton("Request access", enabled = !state.isLoading && state.joinCode.isNotBlank(), onClick = actions.onRequestToJoin)
+            PrimaryButton("Request access", enabled = !state.isLoading && state.inviteLink.isNotBlank(), onClick = actions.onRequestToJoin)
         }
         item {
             Text(
-                "A code only lets you ask. You get access once a member accepts.",
+                "A link only lets you ask. You get access once a member accepts.",
                 color = TextSecondary, style = MaterialTheme.typography.bodySmall
             )
+        }
+
+        // ── Contacts ──────────────────────────────────────────────────────────
+        item { SectionHeader("Contacts") }
+        state.myContactLink?.let { link ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Your contact link — share it in person.", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = { actions.onCopy(link) }) { Text("Copy my link") }
+                }
+            }
+        }
+        item {
+            OutlinedTextField(
+                value = state.contactLink,
+                onValueChange = actions.onContactLinkChanged,
+                placeholder = { Text("Paste a contact link", color = TextSecondary) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                colors = fieldColors(),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        item {
+            PrimaryButton("Add contact", enabled = !state.isLoading && state.contactLink.isNotBlank(), onClick = actions.onAddContact)
         }
 
         // ── Demandes en attente (envoyées) ────────────────────────────────────
         if (state.pendingJoins.isNotEmpty()) {
             item { SectionHeader("Waiting for approval") }
-            items(state.pendingJoins, key = { "pending-" + it.code }) { PendingRow(it) }
+            items(state.pendingJoins, key = { "pending-" + it.inviteId }) { PendingRow(it) }
         }
 
         // ── Demandes reçues ───────────────────────────────────────────────────
@@ -267,15 +295,15 @@ private fun InviteCard(invite: RoomInvite, actions: RoomsActions) {
     ) {
         Text("Room created", color = TextPrimary, fontWeight = FontWeight.Bold)
         Text(
-            invite.code, color = Primary, fontFamily = FontFamily.Monospace, letterSpacing = 4.sp,
-            style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            invite.link, color = Primary, fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth()
         )
         Text(
-            "Share this code in person. It only lets people ask to join; a member must accept them.",
+            "Share this link in person. It only lets people ask to join; a member must accept them.",
             color = TextSecondary, style = MaterialTheme.typography.bodySmall
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { actions.onCopy(invite.code) }) { Text("Copy") }
+            OutlinedButton(onClick = { actions.onCopy(invite.link) }) { Text("Copy") }
             TextButton(onClick = actions.onDismissInvite) { Text("Done") }
         }
     }
@@ -284,7 +312,7 @@ private fun InviteCard(invite: RoomInvite, actions: RoomsActions) {
 @Composable
 private fun PendingRow(pending: PendingJoin) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(pending.code, color = TextPrimary, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        Text(pending.roomName, color = TextPrimary)
         Text("Pending…", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -332,8 +360,8 @@ private fun RoomsContentPreview() {
         RoomsContent(
             state = RoomsUiState(
                 title = "Quartier",
-                createdInvite = RoomInvite(ConversationId("r2"), "XK7B2Q"),
-                pendingJoins = listOf(PendingJoin("H4P9TM", 0)),
+                createdInvite = RoomInvite(ConversationId("r2"), "netpopup://room/AAAA"),
+                pendingJoins = listOf(PendingJoin("H4P9TM", "Voisins", 0)),
                 joinRequests = listOf(JoinRequest("j1", room.id, "peer-key", "Alice", 0)),
                 rooms = listOf(room)
             ),

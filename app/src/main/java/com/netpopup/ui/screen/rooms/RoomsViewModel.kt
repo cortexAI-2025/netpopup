@@ -19,7 +19,9 @@ class RoomsViewModel @Inject constructor(repository: ChatRepository) : ViewModel
 
     fun onTitleChanged(title: String) = presenter.onTitleChanged(title)
     fun onAdmissionChanged(policy: AdmissionPolicy) = presenter.onAdmissionChanged(policy)
-    fun onJoinCodeChanged(code: String) = presenter.onJoinCodeChanged(code)
+    fun onInviteLinkChanged(link: String) = presenter.onInviteLinkChanged(link)
+    fun onContactLinkChanged(link: String) = presenter.onContactLinkChanged(link)
+    fun addContact() = presenter.addContact()
     fun createRoom() = presenter.createRoom()
     fun requestToJoin() = presenter.requestToJoin()
     fun approve(requestId: String) = presenter.approve(requestId)

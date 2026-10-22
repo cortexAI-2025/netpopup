@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 import com.netpopup.MainActivity
 import com.netpopup.R
 import com.netpopup.dtn.chat.MeshStatus
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,7 +35,10 @@ import kotlinx.coroutines.launch
  * avant [start] (sur Android 14, démarrer un service `connectedDevice` sans elles lève
  * une exception).
  */
+@AndroidEntryPoint
 class MeshService : Service() {
+
+    @Inject lateinit var runtime: MeshRuntime
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var statusJob: Job? = null
@@ -65,10 +70,10 @@ class MeshService : Service() {
             return START_NOT_STICKY
         }
 
-        MeshRuntime.start(this)
+        runtime.start()
         statusJob?.cancel()
         statusJob = scope.launch {
-            MeshRuntime.status.collect { status ->
+            runtime.status.collect { status ->
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(status))
             }
         }
@@ -78,7 +83,7 @@ class MeshService : Service() {
     override fun onDestroy() {
         statusJob?.cancel()
         scope.cancel()
-        MeshRuntime.stop()
+        runtime.stop()
         super.onDestroy()
     }
 

@@ -86,6 +86,7 @@ dependencies {
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
     implementation(project(":store-sql"))
+    implementation(project(":mesh-engine"))
     implementation(libs.sqlcipher.android)
     implementation(libs.libsignal.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)

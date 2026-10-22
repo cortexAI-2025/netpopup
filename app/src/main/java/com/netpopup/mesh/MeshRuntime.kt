@@ -1,77 +1,89 @@
 package com.netpopup.mesh
 
 import android.content.Context
+import com.netpopup.dtn.chat.ChatRepository
 import com.netpopup.dtn.chat.MeshStatus
-import com.netpopup.dtn.transport.LinkEvent
-import com.netpopup.dtn.transport.PeerHandle
-import com.netpopup.dtn.transport.TransportManager
+import com.netpopup.engine.EngineConfig
+import com.netpopup.engine.MeshChatRepository
+import com.netpopup.engine.MeshEngine
+import com.netpopup.storage.MeshDatabase
 import com.netpopup.transport.nearby.NearbyTransport
 import com.netpopup.transport.nearby.gms.GmsNearbyApi
+import com.netpopup.util.UsernameGenerator
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
- * Le mesh en marche : un [TransportManager] au-dessus du transport Nearby.
+ * Le mesh en marche : un [MeshEngine] (store chiffré, crypto, rooms, ACK, synchronisation) au-dessus du
+ * transport Nearby, et le [ChatRepository] que l'interface utilise.
  *
- * Pour l'instant il ouvre et tourne les liens et expose [status] ; les trames reçues ne
- * sont pas encore branchées sur la synchronisation (session d'anti-entropie, issue 6),
- * ce qui viendra avec la migration de l'UI (mesh-15, #16).
+ * Le moteur exige un fil unique pour tout son état, base comprise : [engineScope] en fournit un. Il est
+ * construit à la première demande, hors du fil principal (Keystore et SQLCipher sont lents).
+ *
+ * Le dépôt existe dès l'ouverture de l'app, avant même le démarrage du service : ses opérations attendent
+ * le moteur. Les messages composés hors portée sont donc gardés et partiront à la prochaine rencontre.
  */
-object MeshRuntime {
+@Singleton
+class MeshRuntime @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val database: MeshDatabase,
+) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+
+    private val engine: Deferred<MeshEngine> = engineScope.async {
+        val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
+        MeshEngine(
+            db = database.sql,
+            transports = listOf(nearby),
+            parentScope = engineScope,
+            config = EngineConfig(displayName = ::displayName),
+        )
+    }
+
+    /** Interface de l'UI : n'ouvre la base qu'au premier usage et ne bloque jamais le fil principal. */
+    val repository: ChatRepository = DeferredChatRepository(engineScope.async { MeshChatRepository(engine.await()) })
 
     private val _status = MutableStateFlow(MeshStatus.STOPPED)
     val status: StateFlow<MeshStatus> = _status.asStateFlow()
 
-    private var scope: CoroutineScope? = null
-    private var manager: TransportManager? = null
+    @Volatile private var started = false
 
-    @Synchronized
-    fun start(context: Context) {
-        if (scope != null) return
-        val s = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), s)
-        val m = TransportManager(listOf(nearby), s)
-        scope = s
-        manager = m
-
-        val peers = HashSet<PeerHandle>()
-        // UNDISPATCHED : on est abonné avant que le gestionnaire ne démarre
-        s.launch(start = CoroutineStart.UNDISPATCHED) {
-            m.events.collect { event ->
-                when (event) {
-                    is LinkEvent.LinkUp -> peers += event.peer
-                    is LinkEvent.LinkDown -> peers -= event.peer
-                    is LinkEvent.FrameReceived -> Unit
-                }
-                _status.update { it.copy(peersInRange = peers.size) }
-            }
-        }
-        s.launch {
-            m.start()
-            _status.update { it.copy(isRunning = true) }
+    fun start() {
+        if (started) return
+        started = true
+        engineScope.launch {
+            val e = engine.await()
+            launch { e.meshStatus.collect { _status.value = it } }
+            e.start()
         }
     }
 
     fun stop() {
-        val (s, m) = synchronized(this) {
-            val current = scope to manager
-            scope = null
-            manager = null
-            current
-        }
-        if (s == null || m == null) return
-        s.launch {
-            m.stop()
+        if (!started) return
+        started = false
+        engineScope.launch {
+            engine.await().stop()
             _status.value = MeshStatus.STOPPED
-            s.cancel()
+        }
+    }
+
+    /** Pseudo annoncé aux autres : tiré une fois puis gardé (préférences privées, non sensibles). */
+    private fun displayName(): String {
+        val prefs = context.getSharedPreferences("netpopup_identity", Context.MODE_PRIVATE)
+        return prefs.getString("display_name", null) ?: UsernameGenerator.generate().also {
+            prefs.edit().putString("display_name", it).apply()
         }
     }
 }

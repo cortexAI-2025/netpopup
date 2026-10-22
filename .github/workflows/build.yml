@@ -116,7 +116,7 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :core-dtn:test :core-crypto:test :store-sql:test --no-daemon --max-workers=1
+        run: gradle :core-dtn:test :core-crypto:test :store-sql:test :mesh-engine:test --no-daemon --max-workers=1
 
       # Tests unitaires des modules Android : la logique du transport Nearby est du Kotlin pur,
       # mais le test de permissions lit le vrai AndroidManifest.xml du module.
@@ -126,6 +126,27 @@ jobs:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: gradle :transport-nearby:testDebugUnitTest --no-daemon --max-workers=1
+
+      # Lint des modules Android. Les rapports sont publiés dans tous les cas ; le pas ne bloque pas
+      # encore le build tant que le premier passage sur le code Compose n'a pas été trié.
+      - name: "Lint — Android modules"
+        shell: bash
+        continue-on-error: true
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle :app:lintDebug :transport-nearby:lintDebug --no-daemon --max-workers=1
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/tests/
+            **/build/reports/lint-results-*.html
+            **/build/reports/lint-results-*.xml
+          if-no-files-found: ignore
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
