@@ -8,6 +8,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
+    <!-- Un service connectedDevice (Android 14) exige l'une de ces permissions, déclarée par l'application elle-même
+         (lint : ForegroundServicePermission). Elles viennent aussi de :transport-nearby ; la fusion les unifie. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <application
         android:name=".NetPopUpApplication"
         android:allowBackup="false"
