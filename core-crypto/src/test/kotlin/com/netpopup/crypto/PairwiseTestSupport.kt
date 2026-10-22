@@ -1,5 +1,6 @@
 package com.netpopup.crypto
 
+import com.netpopup.crypto.room.RoomService
 import org.signal.libsignal.protocol.state.impl.InMemorySignalProtocolStore
 
 /** Un appareil de test : identité, store libsignal en mémoire, horloge contrôlée. */
@@ -9,5 +10,7 @@ class TestDevice(val name: String, withKyber: Boolean = true, startMillis: Long 
     val store = InMemorySignalProtocolStore(identity.keyPair, identity.registrationId)
     val preKeys = PreKeyManager(store, identity, withKyber) { now }
     val session = PairwiseSession(store)
+    val contacts = ContactBook()
+    val rooms = RoomService(store, identity, session, contacts) { now }
     fun bundle() = preKeys.currentBundle(name)
 }
