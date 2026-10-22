@@ -86,6 +86,8 @@ dependencies {
     // Mesh DTN
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
+    implementation(project(":store-sql"))
+    implementation(libs.sqlcipher.android)
     implementation(libs.libsignal.android)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":transport-nearby"))

@@ -138,4 +138,16 @@ class PairwiseSessionTest {
         book.markVerified(fakeBob.identity.publicKey)
         assertEquals(ContactTrust.VERIFIED, book.find(fakeBob.identity.publicKey)!!.trust)
     }
+
+    /** Le bundle d'un appareil (dont la pré-clé Kyber) est affiché en QR à plusieurs contacts. */
+    @Test fun oneBundleServesSeveralContacts() {
+        val bob = TestDevice("Bob")
+        val bundle = ContactBundle.decode(bob.bundle().encode())
+        for (name in listOf("Alice", "Carol", "Dave")) {
+            val sender = TestDevice(name)
+            sender.session.start(bundle)
+            val wire = sender.session.encrypt(bob.identity.publicKey, "de $name".toByteArray())
+            assertEquals("de $name", String(bob.session.decrypt(wire).plaintext))
+        }
+    }
 }

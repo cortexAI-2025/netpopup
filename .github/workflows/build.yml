@@ -116,7 +116,7 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :core-dtn:test :core-crypto:test --no-daemon --max-workers=1
+        run: gradle :core-dtn:test :core-crypto:test :store-sql:test --no-daemon --max-workers=1
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
