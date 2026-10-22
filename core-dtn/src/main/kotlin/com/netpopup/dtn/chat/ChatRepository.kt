@@ -83,6 +83,28 @@ interface ChatRepository {
      * demandes d'accès reçues pour elle. Sans effet sur la room locale.
      */
     suspend fun leave(conversationId: ConversationId)
+
+    /** Empreintes des expéditeurs bloqués sur cet appareil. */
+    fun observeBlocked(): Flow<Set<String>>
+
+    /**
+     * Bloque un expéditeur par sa clé d'identité (pas par son pseudo, qu'il peut changer) : ses messages sont masqués
+     * partout. Ses enveloppes restent relayées, car le relais est aveugle. Sans effet sur soi-même.
+     */
+    suspend fun block(senderKey: String)
+
+    suspend fun unblock(senderKey: String)
+
+    /**
+     * Messages reçus (jamais les siens, jamais ceux d'un bloqué) au fil de leur arrivée, pour les notifications.
+     * Flux à chaud : rien n'est rejoué à l'abonné.
+     */
+    fun observeIncoming(): Flow<ChatMessage>
+
+    fun observeMeshInfo(): Flow<MeshInfo>
+
+    /** Empreinte affichable de la clé d'identité de cet appareil. */
+    suspend fun myFingerprint(): String
 }
 
 class InvalidMessageException(message: String) : IllegalArgumentException(message)

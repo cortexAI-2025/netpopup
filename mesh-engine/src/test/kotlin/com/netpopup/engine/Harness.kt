@@ -117,6 +117,7 @@ class TestNode(
     private val clock: () -> Long,
     private val transportConfig: TransportManagerConfig = TransportManagerConfig(),
     private val seed: Int = 7,
+    private val lifetimeSeconds: Int? = null,
 ) {
     private val file = File(dir, "$name.db")
     private lateinit var db: JdbcSqlDatabase
@@ -133,7 +134,10 @@ class TestNode(
             db, listOf(transport), scope, clock,
             // Taux de faux positifs quasi nul : un faux positif (0,1 % en production, rattrapé au contact suivant) rend
             // un test non déterministe sans rien prouver de plus.
-            EngineConfig(displayName = { name }, pumpIntervalMillis = 100, maintenanceIntervalMillis = 10_000, bloomFalsePositiveRate = 1e-6),
+            EngineConfig(
+                displayName = { name }, pumpIntervalMillis = 100, maintenanceIntervalMillis = 10_000, bloomFalsePositiveRate = 1e-6,
+                messageLifetimeSeconds = { lifetimeSeconds ?: com.netpopup.dtn.envelope.Envelope.DEFAULT_LIFETIME_SECONDS },
+            ),
             transportConfig, kotlin.random.Random(seed),
         )
         repo = MeshChatRepository(engine, clock)
@@ -181,8 +185,9 @@ suspend fun settleHours(h: Int) = delay(h.hours)
 class World(private val testScope: TestScope, private val dir: File, private val base: Long = 1_700_000_000_000L) {
     val network = LoopbackNetwork(testScope.backgroundScope).also { n -> n.clockForLog = { testScope.currentTime } }
 
-    fun node(name: String): TestNode =
-        TestNode(name, network, testScope.backgroundScope, dir, { base + testScope.currentTime })
+    /** [skewMillis] : l'horloge de ce téléphone avance (ou retarde) de cette durée sur celle du monde. */
+    fun node(name: String, skewMillis: Long = 0, lifetimeSeconds: Int? = null): TestNode =
+        TestNode(name, network, testScope.backgroundScope, dir, { base + skewMillis + testScope.currentTime }, lifetimeSeconds = lifetimeSeconds)
 
     /** Crée et démarre plusieurs téléphones. */
     suspend fun nodes(vararg names: String): List<TestNode> = names.map { node(it).also { n -> n.start() } }

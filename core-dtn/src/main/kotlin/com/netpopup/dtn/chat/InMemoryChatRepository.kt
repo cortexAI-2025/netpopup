@@ -39,14 +39,33 @@ class InMemoryChatRepository(
     private val joinRequests = MutableStateFlow<List<JoinRequest>>(emptyList())
     private val roomLinks = mutableMapOf<String, ConversationId>()
     private val mesh = MutableStateFlow(MeshStatus.STOPPED)
+    private val blocked = MutableStateFlow<Set<String>>(emptySet())
+    private val incoming = kotlinx.coroutines.flow.MutableSharedFlow<ChatMessage>(extraBufferCapacity = 64)
+    private val info = MutableStateFlow(MeshInfo.EMPTY)
 
     override val meshStatus: StateFlow<MeshStatus> = mesh.asStateFlow()
 
     override fun observeConversations(): Flow<List<Conversation>> = conversations
 
+    override fun observeBlocked(): Flow<Set<String>> = blocked
+
+    override suspend fun block(senderKey: String) {
+        if (senderKey != selfKey) blocked.value = blocked.value + senderKey
+    }
+
+    override suspend fun unblock(senderKey: String) {
+        blocked.value = blocked.value - senderKey
+    }
+
+    override fun observeIncoming(): Flow<ChatMessage> = incoming
+
+    override fun observeMeshInfo(): Flow<MeshInfo> = info
+
+    override suspend fun myFingerprint(): String = "0000 0000 0000 0000 0000\n0000 0000 0000 0000 0000"
+
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeMessages(conversationId: ConversationId): Flow<List<ChatMessage>> =
-        messages.transformLatest { all ->
+        kotlinx.coroutines.flow.combine(messages, blocked) { all, hidden -> all.filter { it.isOwn || it.senderKey !in hidden } }.transformLatest { all ->
             // Ré-émet à chaque expiration, même si rien d'autre ne change.
             while (true) {
                 val t = now()
@@ -169,6 +188,7 @@ class InMemoryChatRepository(
             deliveryState = DeliveryState.RECEIVED
         )
         append(message)
+        if (senderKey !in blocked.value) incoming.tryEmit(message)
         return message
     }
 

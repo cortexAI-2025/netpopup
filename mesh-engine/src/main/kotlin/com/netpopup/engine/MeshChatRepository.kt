@@ -33,7 +33,9 @@ class MeshChatRepository(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeMessages(conversationId: ConversationId): Flow<List<ChatMessage>> =
-        engine.messages.transformLatest { all ->
+        kotlinx.coroutines.flow.combine(engine.messages, engine.blocked) { all, hidden ->
+            all.filter { it.isOwn || it.senderKey !in hidden }
+        }.transformLatest { all ->
             // Ré-émet à chaque expiration, même si rien d'autre ne change.
             while (true) {
                 val t = clock()
@@ -72,4 +74,16 @@ class MeshChatRepository(
         engine.roomDetails.map { it[conversationId] }.distinctUntilChanged()
 
     override suspend fun leave(conversationId: ConversationId) = engine.leave(conversationId)
+
+    override fun observeBlocked(): Flow<Set<String>> = engine.blocked
+
+    override suspend fun block(senderKey: String) = engine.block(senderKey)
+
+    override suspend fun unblock(senderKey: String) = engine.unblock(senderKey)
+
+    override fun observeIncoming(): Flow<ChatMessage> = engine.incoming
+
+    override fun observeMeshInfo(): Flow<com.netpopup.dtn.chat.MeshInfo> = engine.meshInfo
+
+    override suspend fun myFingerprint(): String = engine.myFingerprint()
 }

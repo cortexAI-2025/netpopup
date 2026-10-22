@@ -1,6 +1,7 @@
 package com.netpopup.dtn.sync
 
 import com.netpopup.dtn.envelope.DecodeResult
+import com.netpopup.dtn.envelope.RejectReason
 import com.netpopup.dtn.envelope.Envelope
 import com.netpopup.dtn.envelope.EnvelopeCodec
 import com.netpopup.dtn.envelope.EnvelopeKind
@@ -18,7 +19,9 @@ data class SyncStats(
     val rejected: Int = 0,
     /** Trames `ENVELOPE` écartées parce que le pair dépasse son débit autorisé. */
     val throttled: Int = 0,
-    val malformed: Int = 0
+    val malformed: Int = 0,
+    /** Enveloppes refusées pour une date incohérente (dans le futur ou déjà expirée) : indice d'horloge décalée. */
+    val timeRejected: Int = 0
 )
 
 /**
@@ -142,9 +145,12 @@ class SyncSession(
             return
         }
         val nowSeconds = nowMillis / 1000
-        val envelope = (EnvelopeCodec.decode(bytes, nowSeconds) as? DecodeResult.Accepted)?.envelope
+        val decoded = EnvelopeCodec.decode(bytes, nowSeconds)
+        val envelope = (decoded as? DecodeResult.Accepted)?.envelope
         if (envelope == null) {
-            stats = stats.copy(rejected = stats.rejected + 1)
+            val timeBased = decoded is DecodeResult.Rejected &&
+                (decoded.reason == RejectReason.FROM_THE_FUTURE || decoded.reason == RejectReason.EXPIRED || decoded.reason == RejectReason.BAD_TIMESTAMP)
+            stats = stats.copy(rejected = stats.rejected + 1, timeRejected = stats.timeRejected + if (timeBased) 1 else 0)
             return
         }
         seen += envelope.id // le pair l'a : ne pas la lui renvoyer

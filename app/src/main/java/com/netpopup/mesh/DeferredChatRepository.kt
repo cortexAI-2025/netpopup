@@ -56,4 +56,16 @@ class DeferredChatRepository(private val delegate: Deferred<ChatRepository>) : C
         flowOf { it.observeRoomDetails(conversationId) }
 
     override suspend fun leave(conversationId: ConversationId) = delegate.await().leave(conversationId)
+
+    override fun observeBlocked(): Flow<Set<String>> = flowOf { it.observeBlocked() }
+
+    override suspend fun block(senderKey: String) = delegate.await().block(senderKey)
+
+    override suspend fun unblock(senderKey: String) = delegate.await().unblock(senderKey)
+
+    override fun observeIncoming(): Flow<ChatMessage> = flowOf { it.observeIncoming() }
+
+    override fun observeMeshInfo(): Flow<com.netpopup.dtn.chat.MeshInfo> = flowOf { it.observeMeshInfo() }
+
+    override suspend fun myFingerprint(): String = delegate.await().myFingerprint()
 }

@@ -86,6 +86,11 @@ class EngineConfig(
     val reannounceIntervalMillis: Long = 2 * 3_600_000L,
     val pumpIntervalMillis: Long = 250,
     val maxJoinRequestsPerRoom: Int = 50,
+    /** Durée de vie des messages envoyés, en secondes ; bornée à 1 h – 24 h à l'usage. */
+    val messageLifetimeSeconds: () -> Int = { Envelope.DEFAULT_LIFETIME_SECONDS },
+    /** Nombre de refus pour date incohérente, sur [clockWindowMillis], à partir duquel on suspecte l'horloge. */
+    val clockSuspicionThreshold: Int = 5,
+    val clockWindowMillis: Long = 3_600_000L,
     /**
      * Un faux positif du filtre de Bloom cache une enveloppe au pair pour toute la session (un ACK arrive alors
      * un contact plus tard). À 0,1 % le filtre pèse ~13 Ko pour 5 000 enveloppes, sous la limite de trame Nearby.
@@ -151,6 +156,13 @@ class MeshEngine(
     private val joinRequestsFlow = MutableStateFlow<List<JoinRequest>>(emptyList())
     private val statusFlow = MutableStateFlow(MeshStatus.STOPPED)
     private val roomDetailsFlow = MutableStateFlow<Map<ConversationId, RoomDetails>>(emptyMap())
+    private val blockList = com.netpopup.store.sql.SqlBlockList(db)
+    private val blockedFlow = MutableStateFlow(blockList.all())
+    private val incomingFlow = kotlinx.coroutines.flow.MutableSharedFlow<ChatMessage>(
+        extraBufferCapacity = 64, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+    private val infoFlow = MutableStateFlow(com.netpopup.dtn.chat.MeshInfo.EMPTY)
+    private val timeRejections = ArrayDeque<Long>()
 
     private var started = false
     private var lastPurgeAt = 0L
@@ -163,6 +175,9 @@ class MeshEngine(
     internal val pendingJoinList: StateFlow<List<PendingJoin>> = pendingJoinsFlow.asStateFlow()
     internal val joinRequestList: StateFlow<List<JoinRequest>> = joinRequestsFlow.asStateFlow()
     internal val roomDetails: StateFlow<Map<ConversationId, RoomDetails>> = roomDetailsFlow.asStateFlow()
+    internal val blocked: StateFlow<Set<String>> = blockedFlow.asStateFlow()
+    internal val incoming: kotlinx.coroutines.flow.SharedFlow<ChatMessage> = incomingFlow
+    internal val meshInfo: StateFlow<com.netpopup.dtn.chat.MeshInfo> = infoFlow.asStateFlow()
 
     init {
         loadState()
@@ -228,8 +243,16 @@ class MeshEngine(
             }
         }
 
+        private var timeRejectedSeen = 0
+
         fun onFrame(frame: ByteArray) {
             session.onFrame(frame, clock())
+            val total = session.stats.timeRejected
+            if (total > timeRejectedSeen) {
+                repeat(total - timeRejectedSeen) { timeRejections.addLast(clock()) }
+                timeRejectedSeen = total
+                refreshInfo()
+            }
             if (!verified && session.peerInventoryReceived) {
                 verified = true
                 updateStatus()
@@ -542,6 +565,7 @@ class MeshEngine(
     }
 
     private fun maintenanceTick() {
+        refreshInfo()
         for ((convId, room) in roomStates.entries.toList()) roomMaintenance(convId, room)
         val now = clock()
         if (now - lastPurgeAt >= config.purgeIntervalMillis) {
@@ -572,7 +596,7 @@ class MeshEngine(
         val name = config.displayName()
         val message: ChatMessage = when {
             conversationId == LOCAL_CONVERSATION_ID -> {
-                val env = createEnvelope(EnvelopeKind.DATA, PublicRoom.keys.tagKey, DEFAULT_LIFETIME) { aad ->
+                val env = createEnvelope(EnvelopeKind.DATA, PublicRoom.keys.tagKey, lifetime()) { aad ->
                     PublicRoom.seal(identity, name, text, aad)
                 }
                 ownMessage(MessageId(UUID.randomUUID().toString()), conversationId, name, text, sentAt, env)
@@ -580,12 +604,12 @@ class MeshEngine(
             conversationId in directConversations -> {
                 val peer = directConversations.getValue(conversationId)
                 ensureSession(peer)
-                val sent = messenger(peer).send(text)
+                val sent = messenger(peer).send(text, lifetime())
                 ownMessage(sent.messageId, conversationId, name, text, sentAt, null)
             }
             conversationId in roomStates -> {
                 val room = roomStates.getValue(conversationId)
-                val env = createEnvelope(EnvelopeKind.DATA, room.keys.tagKey, DEFAULT_LIFETIME) { aad ->
+                val env = createEnvelope(EnvelopeKind.DATA, room.keys.tagKey, lifetime()) { aad ->
                     rooms.sealMessage(room, aad, named(name, text))
                 }
                 ownMessage(MessageId(UUID.randomUUID().toString()), conversationId, name, text, sentAt, env)
@@ -703,6 +727,29 @@ class MeshEngine(
 
     suspend fun myContactLink(): String = onEngine { preKeys.currentBundle(config.displayName()).toUri() }
 
+    suspend fun block(senderKey: String) = onEngine {
+        if (senderKey == senderKeyOf(identity.publicKey)) return@onEngine
+        blockList.block(senderKey, clock())
+        blockedFlow.value = blockList.all()
+    }
+
+    suspend fun unblock(senderKey: String) = onEngine {
+        blockList.unblock(senderKey)
+        blockedFlow.value = blockList.all()
+    }
+
+    suspend fun myFingerprint(): String = onEngine { com.netpopup.crypto.Fingerprints.of(identity.publicKey) }
+
+    /** Recalcule les compteurs des réglages (taille du store, soupçon d'horloge décalée). */
+    private fun refreshInfo() {
+        val cutoff = clock() - config.clockWindowMillis
+        while (timeRejections.isNotEmpty() && timeRejections.first() < cutoff) timeRejections.removeFirst()
+        infoFlow.value = com.netpopup.dtn.chat.MeshInfo(
+            storedEnvelopes = store.stats().envelopes,
+            clockSkewSuspected = timeRejections.size >= config.clockSuspicionThreshold,
+        )
+    }
+
     suspend fun leave(conversationId: ConversationId) = onEngine {
         if (conversationId == LOCAL_CONVERSATION_ID) return@onEngine
         roomStates.remove(conversationId)?.let { room ->
@@ -741,8 +788,11 @@ class MeshEngine(
         return envelope
     }
 
+    /** Durée de vie choisie dans les réglages, bornée : jamais plus de 24 h, jamais moins d'1 h. */
+    private fun lifetime(): Int = config.messageLifetimeSeconds().coerceIn(3_600, Envelope.MAX_LIFETIME_SECONDS)
+
     private fun ownMessage(id: MessageId, conv: ConversationId, name: String, text: String, sentAt: Long, env: Envelope?): ChatMessage {
-        val m = ChatMessage(id, conv, senderKeyOf(identity.publicKey), name, text, sentAt, sentAt + MessageRules.DEFAULT_LIFETIME_MS, true, DeliveryState.QUEUED)
+        val m = ChatMessage(id, conv, senderKeyOf(identity.publicKey), name, text, sentAt, sentAt + lifetime() * 1000L, true, DeliveryState.QUEUED)
         storeMessage(m)
         if (env != null) states.put(K_TX, env.id.hex, id.value.toByteArray())
         return m
@@ -753,7 +803,9 @@ class MeshEngine(
         if (messageDao.exists(id)) return
         val expiresAt = (env.createdAt + env.lifetime) * 1000
         if (expiresAt <= clock()) return
-        storeMessage(ChatMessage(id, conv, senderKeyOf(sender), name, text, env.createdAt * 1000, expiresAt, false, DeliveryState.RECEIVED))
+        val received = ChatMessage(id, conv, senderKeyOf(sender), name, text, env.createdAt * 1000, expiresAt, false, DeliveryState.RECEIVED)
+        storeMessage(received)
+        if (received.senderKey !in blockedFlow.value) incomingFlow.tryEmit(received)
     }
 
     private fun storeMessage(m: ChatMessage) {

@@ -111,6 +111,19 @@ data class MeshStatus(
     }
 }
 
+/** Ce que l'écran des réglages affiche de l'état du mesh, au-delà des pairs à portée. */
+data class MeshInfo(
+    /** Enveloppes gardées sur l'appareil (messages en transit compris). */
+    val storedEnvelopes: Int,
+    /**
+     * Vrai quand plusieurs enveloppes reçues ont été refusées pour une date incohérente : l'horloge de ce
+     * téléphone (ou celle des pairs) s'écarte probablement de plus de 2 h. C'est une présomption, pas une mesure.
+     */
+    val clockSkewSuspected: Boolean
+) {
+    companion object { val EMPTY = MeshInfo(0, false) }
+}
+
 /** Membre d'une room privée, identifié par l'empreinte de sa clé d'identité. */
 data class RoomMember(
     val identityKey: String,
