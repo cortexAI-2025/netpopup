@@ -4,9 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import com.netpopup.mesh.MeshPermissions
 import com.netpopup.mesh.MeshService
+import com.netpopup.security.SecureWindow
 import com.netpopup.ui.navigation.NavGraph
 import com.netpopup.ui.theme.NetPopUpTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -27,6 +29,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Déjà posé par NetPopUpApplication avant onCreate ; répété ici pour que l'intention reste lisible.
+        SecureWindow.enable(window)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         enableEdgeToEdge()
         val toRequest = MeshPermissions.toRequest(this)
         if (toRequest.isEmpty()) MeshService.start(this) else meshPermissions.launch(toRequest.toTypedArray())
