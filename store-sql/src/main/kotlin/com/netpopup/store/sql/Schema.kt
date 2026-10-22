@@ -8,7 +8,7 @@ package com.netpopup.store.sql
  * appliquée dans une transaction.
  */
 object Schema {
-    const val VERSION = 1
+    const val VERSION = 2
 
     private val V1 = listOf(
         """CREATE TABLE envelope (
@@ -42,7 +42,16 @@ object Schema {
         "CREATE TABLE signal_sender_key (address TEXT NOT NULL, distribution_id TEXT NOT NULL, record BLOB NOT NULL, PRIMARY KEY (address, distribution_id))",
     )
 
-    private val migrations: List<List<String>> = listOf(V1)
+    /** Moteur : envois en attente d'ACK et état sérialisé (contacts, rooms, demandes d'accès…). */
+    private val V2 = listOf(
+        """CREATE TABLE pending_send (
+            token_hash TEXT PRIMARY KEY, peer TEXT NOT NULL, message_id TEXT NOT NULL,
+            envelope_id TEXT NOT NULL, state INTEGER NOT NULL, control INTEGER NOT NULL)""",
+        "CREATE INDEX pending_send_peer ON pending_send(peer)",
+        "CREATE TABLE engine_state (kind TEXT NOT NULL, id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (kind, id))",
+    )
+
+    private val migrations: List<List<String>> = listOf(V1, V2)
 
     fun currentVersion(db: SqlDatabase): Int = db.query("PRAGMA user_version") { it.int(0) }.first()
 
