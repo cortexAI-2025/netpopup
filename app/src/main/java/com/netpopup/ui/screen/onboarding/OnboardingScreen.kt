@@ -52,13 +52,23 @@ private fun reasonFor(permission: String): String? = when (permission) {
     else -> null
 }
 
+/** Actions de l'onboarding, séparées de l'écran pour pouvoir le tester sans Hilt ni permissions réelles. */
+class OnboardingActions(
+    val onNameChange: (String) -> Unit = {},
+    val onRandomName: () -> Unit = {},
+    /** Demande les permissions manquantes (ou termine si tout est déjà accordé). */
+    val onAllow: () -> Unit = {},
+    val onOpenAndroidSettings: () -> Unit = {},
+    /** Termine sans le mesh : l'app reste utilisable en lecture. */
+    val onContinueWithoutMesh: () -> Unit = {},
+)
+
 /**
- * Premier lancement : le modèle en trois phrases, le pseudo, puis les permissions avec leurs raisons.
+ * Premier lancement : le modèle en quelques phrases, le pseudo, puis les permissions avec leurs raisons.
  * Terminé une fois, il ne revient plus.
  */
 @Composable
 fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltViewModel()) {
-    var step by remember { mutableIntStateOf(0) }
     val name by viewModel.displayName.collectAsState()
     val context = LocalContext.current
     var denied by remember { mutableStateOf(false) }
@@ -66,6 +76,35 @@ fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltVi
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (MeshPermissions.missing(context).isEmpty()) { viewModel.finish(); onDone() } else denied = true
     }
+
+    OnboardingContent(
+        name = name,
+        permissionReasons = MeshPermissions.allRequested(context).mapNotNull { reasonFor(it) },
+        denied = denied,
+        actions = OnboardingActions(
+            onNameChange = viewModel::setName,
+            onRandomName = viewModel::randomName,
+            onAllow = {
+                val toRequest = MeshPermissions.toRequest(context)
+                if (toRequest.isEmpty()) { viewModel.finish(); onDone() } else launcher.launch(toRequest.toTypedArray())
+            },
+            onOpenAndroidSettings = {
+                context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+            },
+            onContinueWithoutMesh = { viewModel.finish(); onDone() },
+        ),
+    )
+}
+
+@Composable
+fun OnboardingContent(
+    name: String,
+    permissionReasons: List<String>,
+    denied: Boolean,
+    actions: OnboardingActions,
+    initialStep: Int = 0,
+) {
+    var step by remember { mutableIntStateOf(initialStep) }
 
     Column(
         Modifier.fillMaxSize().statusBarsPadding().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -89,8 +128,8 @@ fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltVi
                 Text("Choose a display name", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                 Text("Your name is shown to the people you talk to. It is not an account and you can change it any time.", color = TextSecondary)
                 Text("Your cryptographic identity is created on this phone only; it never leaves it.", color = TextSecondary)
-                OutlinedTextField(value = name, onValueChange = viewModel::setName, singleLine = true, label = { Text("Display name") }, modifier = Modifier.fillMaxWidth())
-                OutlinedButton(onClick = viewModel::randomName) { Text("Random name") }
+                OutlinedTextField(value = name, onValueChange = actions.onNameChange, singleLine = true, label = { Text("Display name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = actions.onRandomName) { Text("Random name") }
                 Button(onClick = { step = 2 }, enabled = name.isNotBlank(), modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
                     Text("Next", color = MaterialTheme.colorScheme.onPrimary)
                 }
@@ -98,7 +137,7 @@ fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltVi
             else -> {
                 Text("Permissions", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                 Text("To find and talk to nearby phones, Android needs your permission:", color = TextSecondary)
-                MeshPermissions.allRequested(context).mapNotNull { reasonFor(it) }.forEach { Text("• $it", color = TextSecondary) }
+                permissionReasons.forEach { Text("• $it", color = TextSecondary) }
                 Text(
                     "While the mesh runs, a permanent notification stays visible. Android requires it to keep Bluetooth active in the background; " +
                         "it never shows any message.",
@@ -109,21 +148,15 @@ fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltVi
                         "Some permissions were refused. You can read the app, but nothing will be sent or received until you allow them.",
                         color = Error
                     )
-                    OutlinedButton(onClick = { launcher.launch(MeshPermissions.toRequest(context).toTypedArray()) }, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
-                    TextButton(onClick = {
-                        context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
-                    }) { Text("Open Android settings") }
-                    Button(onClick = { viewModel.finish(); onDone() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
+                    OutlinedButton(onClick = actions.onAllow, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+                    TextButton(onClick = actions.onOpenAndroidSettings) { Text("Open Android settings") }
+                    Button(onClick = actions.onContinueWithoutMesh, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
                         Text("Continue without the mesh", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 } else {
-                    Button(
-                        onClick = {
-                            val toRequest = MeshPermissions.toRequest(context)
-                            if (toRequest.isEmpty()) { viewModel.finish(); onDone() } else launcher.launch(toRequest.toTypedArray())
-                        },
-                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                    ) { Text("Allow and start", color = MaterialTheme.colorScheme.onPrimary) }
+                    Button(onClick = actions.onAllow, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
+                        Text("Allow and start", color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             }
         }

@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,17 +45,58 @@ import com.netpopup.ui.theme.TextSecondary
 
 private const val SOURCE_URL = "https://github.com/cortexAI-2025/netpopup"
 
+/** Actions de l'écran, séparées de l'état pour pouvoir le tester sans Hilt. */
+class SettingsActions(
+    val onMeshToggle: (Boolean) -> Unit = {},
+    val onRequestPermissions: () -> Unit = {},
+    val onOpenAndroidSettings: () -> Unit = {},
+    val onSaveName: (String) -> Unit = {},
+    val onRandomName: () -> Unit = {},
+    val onLifetime: (Int) -> Unit = {},
+    val onNotifications: (Boolean) -> Unit = {},
+    val onUnblock: (String) -> Unit = {},
+    val onOpenSource: () -> Unit = {},
+)
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val settings = state.settings
 
     // Le service refuse de démarrer sans permissions : on les demande avant de l'activer.
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (MeshPermissions.missing(context).isEmpty()) viewModel.setMeshEnabled(true)
     }
     val missing = MeshPermissions.missing(context)
+    val requestPermissions = { permissions.launch(MeshPermissions.toRequest(context).toTypedArray()) }
+
+    SettingsContent(
+        state = state,
+        permissionsMissing = missing.isNotEmpty(),
+        onBack = onBack,
+        actions = SettingsActions(
+            onMeshToggle = { on ->
+                if (!on) viewModel.setMeshEnabled(false)
+                else if (missing.isEmpty()) viewModel.setMeshEnabled(true)
+                else requestPermissions()
+            },
+            onRequestPermissions = requestPermissions,
+            onOpenAndroidSettings = {
+                context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+            },
+            onSaveName = viewModel::setDisplayName,
+            onRandomName = viewModel::generateDisplayName,
+            onLifetime = viewModel::setLifetimeHours,
+            onNotifications = viewModel::setNotificationsEnabled,
+            onUnblock = viewModel::unblock,
+            onOpenSource = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) },
+        ),
+    )
+}
+
+@Composable
+fun SettingsContent(state: SettingsUiState, permissionsMissing: Boolean, onBack: () -> Unit, actions: SettingsActions) {
+    val settings = state.settings
 
     Scaffold(
         topBar = { NetPopUpTopBar(title = "Settings", onBack = onBack) },
@@ -77,14 +119,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                             color = TextSecondary, style = MaterialTheme.typography.bodySmall
                         )
                     }
-                    Switch(
-                        checked = settings.meshEnabled,
-                        onCheckedChange = { on ->
-                            if (!on) viewModel.setMeshEnabled(false)
-                            else if (missing.isEmpty()) viewModel.setMeshEnabled(true)
-                            else permissions.launch(MeshPermissions.toRequest(context).toTypedArray())
-                        }
-                    )
+                    Switch(checked = settings.meshEnabled, onCheckedChange = actions.onMeshToggle, modifier = Modifier.testTag("mesh_switch"))
                 }
             }
             item {
@@ -94,14 +129,12 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     color = TextSecondary, style = MaterialTheme.typography.bodySmall
                 )
             }
-            if (missing.isNotEmpty()) {
+            if (permissionsMissing) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Some permissions are missing, so the mesh cannot run.", color = Error, style = MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick = { permissions.launch(MeshPermissions.toRequest(context).toTypedArray()) }) { Text("Grant permissions") }
-                        TextButton(onClick = {
-                            context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
-                        }) { Text("Open Android settings") }
+                        OutlinedButton(onClick = actions.onRequestPermissions) { Text("Grant permissions") }
+                        TextButton(onClick = actions.onOpenAndroidSettings) { Text("Open Android settings") }
                     }
                 }
             }
@@ -117,7 +150,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
 
             // ── Identité ──────────────────────────────────────────────────────
             item { Header("Identity") }
-            item { NameField(settings.displayName, viewModel::setDisplayName, viewModel::generateDisplayName) }
+            item { NameField(settings.displayName, actions.onSaveName, actions.onRandomName) }
             item {
                 Column {
                     Text("Your key fingerprint", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
@@ -134,8 +167,8 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         LifetimeChoices.HOURS.forEach { h ->
                             val selected = h == settings.lifetimeHours
-                            if (selected) Button(onClick = {}, colors = ButtonDefaults.buttonColors(containerColor = Primary)) { Text("${h}h", color = MaterialTheme.colorScheme.onPrimary) }
-                            else OutlinedButton(onClick = { viewModel.setLifetimeHours(h) }) { Text("${h}h") }
+                            if (selected) Button(onClick = {}, colors = ButtonDefaults.buttonColors(containerColor = Primary), modifier = Modifier.testTag("lifetime_selected_$h")) { Text("${h}h", color = MaterialTheme.colorScheme.onPrimary) }
+                            else OutlinedButton(onClick = { actions.onLifetime(h) }, modifier = Modifier.testTag("lifetime_$h")) { Text("${h}h") }
                         }
                     }
                     Text("Messages disappear from every phone after this delay (24 h at most).", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
@@ -150,7 +183,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                         Text("Notify me of new messages", color = TextPrimary)
                         Text("The notification only says \"New message\": no name, no room, no content.", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = settings.notificationsEnabled, onCheckedChange = viewModel::setNotificationsEnabled)
+                    Switch(checked = settings.notificationsEnabled, onCheckedChange = actions.onNotifications, modifier = Modifier.testTag("notifications_switch"))
                 }
             }
 
@@ -169,7 +202,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 items(state.blocked.toList().sorted(), key = { "blocked-$it" }) { key ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(key.take(16) + "…", color = TextPrimary, fontFamily = FontFamily.Monospace)
-                        TextButton(onClick = { viewModel.unblock(key) }) { Text("Unblock") }
+                        TextButton(onClick = { actions.onUnblock(key) }) { Text("Unblock") }
                     }
                 }
             }
@@ -179,7 +212,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("NetPopUp is free software under the GNU AGPL-3.0.", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL))) }) { Text("View the source code") }
+                    TextButton(onClick = actions.onOpenSource) { Text("View the source code") }
                 }
             }
         }

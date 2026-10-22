@@ -69,6 +69,9 @@ android {
 
     buildFeatures { compose = true }
 
+    // Robolectric charge le manifeste fusionné et les ressources : les tests d'interface tournent sur la JVM.
+    testOptions { unitTests { isIncludeAndroidResources = true } }
+
     composeOptions {
         // Compose compiler pour Kotlin 1.9.22
         kotlinCompilerExtensionVersion = "1.5.10"
@@ -124,6 +127,10 @@ dependencies {
 
     // Tests
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
