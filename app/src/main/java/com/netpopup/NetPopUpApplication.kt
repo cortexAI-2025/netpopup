@@ -1,6 +1,7 @@
 package com.netpopup
 
 import android.app.Application
+import com.netpopup.security.SecureWindow
 import dagger.hilt.android.HiltAndroidApp
 
 /**
@@ -8,4 +9,10 @@ import dagger.hilt.android.HiltAndroidApp
  * Firebase is auto-initialized via google-services.json at build time.
  */
 @HiltAndroidApp
-class NetPopUpApplication : Application()
+class NetPopUpApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        // FLAG_SECURE sur toutes les fenêtres, avant leur création.
+        registerActivityLifecycleCallbacks(SecureWindow.Callbacks())
+    }
+}
