@@ -34,6 +34,7 @@ Si tu refuses, l'application reste consultable mais n'échange plus rien. Tu peu
 - **Pas de récupération** : si tu perds ton téléphone ou réinstalles, tes contacts et rooms sont perdus.
   La sauvegarde Android est désactivée exprès.
 - **Captures d'écran bloquées** dans l'application.
+- **Nouveau membre** : il peut lire les messages de la room encore en circulation au moment où il arrive (24 h au plus).
 - **Membre retiré** : il peut lire quelques messages déjà en circulation jusqu'à leur expiration.
 - **Qui est à portée est observable** par quelqu'un qui écoute la radio, même sans lire les messages.
 

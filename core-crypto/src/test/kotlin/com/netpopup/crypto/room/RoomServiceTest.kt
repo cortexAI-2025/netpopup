@@ -317,4 +317,46 @@ class RoomServiceTest {
         assertThrows(RoomException::class.java) { b.dev.rooms.onSenderKey(b.room, stranger.identity.publicKey, got.plaintext) }
         b.dev.rooms.onSenderKey(b.room, got.sender, got.plaintext)
     }
+
+    // ── Clés qui voyagent avec retard ────────────────────────────────────────
+
+    private fun announceAll(members: List<Member>) {
+        for (m in members) {
+            val announce = m.dev.rooms.sealAnnounce(m.room, aad, m.dev.bundle())
+            for (o in members) if (o !== m) o.dev.rooms.openAnnounce(o.room, aad, announce)
+        }
+    }
+
+    @Test fun aMemberWhoseKeyArrivesLateStillReadsWhatWasWrittenBeforeIt() {
+        val (_, all) = setup()
+        val (a, b, c) = all
+        announceAll(all)
+        // Alice ne peut d'abord joindre que Bob ; elle écrit ; la clé de Carol ne part qu'ensuite.
+        val first = a.dev.rooms.senderKeyDistribution(a.room, null) { it == b.dev.identity.publicKey }
+        for (out in first.outgoing) { val got = deliver(out, a, b); b.dev.rooms.onSenderKey(b.room, got.sender, got.plaintext) }
+        val early1 = a.dev.rooms.sealMessage(a.room, aad, "premier".toByteArray())
+        val early2 = a.dev.rooms.sealMessage(a.room, aad, "deuxième".toByteArray())
+
+        val late = a.dev.rooms.senderKeyDistribution(a.room, first.snapshot) { it == c.dev.identity.publicKey }
+        for (out in late.outgoing) { val got = deliver(out, a, c); c.dev.rooms.onSenderKey(c.room, got.sender, got.plaintext) }
+
+        assertEquals("premier", String(c.dev.rooms.openMessage(c.room, aad, early1)!!.plaintext))
+        assertEquals("deuxième", String(c.dev.rooms.openMessage(c.room, aad, early2)!!.plaintext))
+        val after = a.dev.rooms.sealMessage(a.room, aad, "après".toByteArray())
+        assertEquals("après", String(c.dev.rooms.openMessage(c.room, aad, after)!!.plaintext))
+    }
+
+    @Test fun withoutTheSnapshotALateKeyCannotReadEarlierMessages() {
+        // Garde-fou : documente pourquoi l'instantané est nécessaire (comportement natif de libsignal).
+        val (_, all) = setup()
+        val (a, b, c) = all
+        announceAll(all)
+        val first = a.dev.rooms.senderKeyDistribution(a.room, null) { it == b.dev.identity.publicKey }
+        for (out in first.outgoing) { val got = deliver(out, a, b); b.dev.rooms.onSenderKey(b.room, got.sender, got.plaintext) }
+        val early = a.dev.rooms.sealMessage(a.room, aad, "avant".toByteArray())
+
+        val fresh = a.dev.rooms.senderKeyDistribution(a.room, null) { it == c.dev.identity.publicKey }
+        for (out in fresh.outgoing) { val got = deliver(out, a, c); c.dev.rooms.onSenderKey(c.room, got.sender, got.plaintext) }
+        assertNull(c.dev.rooms.openMessage(c.room, aad, early))
+    }
 }

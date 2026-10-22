@@ -33,6 +33,7 @@ If you refuse, the app stays readable but exchanges nothing. You can re-enable t
 - **No recovery**: lose or reinstall the phone and your contacts and rooms are gone. Android backup is
   deliberately disabled.
 - **Screenshots are blocked** inside the app.
+- **New member**: can read the room's messages still in circulation when they arrive (24 h at most).
 - **Removed member**: may still read a few messages already in flight until they expire.
 - **Presence is observable**: someone listening to the radio can tell phones are nearby, even without reading messages.
 

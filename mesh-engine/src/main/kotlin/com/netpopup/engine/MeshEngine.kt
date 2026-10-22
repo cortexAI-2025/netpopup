@@ -535,6 +535,24 @@ class MeshEngine(
 
     // ── Entretien des rooms : annonces, Sender Keys, mises à jour de membres ──
 
+    /**
+     * Message de distribution de notre Sender Key, figé à la création de la clé de l'époque : un membre qui le reçoit
+     * tard (relais, rotation des liens) lit aussi ce qu'on a écrit avant son arrivée. Voir [RoomService.senderKeyDistribution].
+     */
+    private fun skSnapshot(roomHex: String, epoch: Int): ByteArray? = states.get(K_SK_SNAPSHOT, "$roomHex:$epoch")
+
+    private fun saveSkSnapshot(roomHex: String, epoch: Int, snapshot: ByteArray) {
+        if (snapshot.isNotEmpty() && skSnapshot(roomHex, epoch) == null) states.put(K_SK_SNAPSHOT, "$roomHex:$epoch", snapshot)
+    }
+
+    /** S'assure que la clé existe (et son instantané) avant d'écrire : sinon le premier message précéderait l'instantané. */
+    private fun ensureSenderKey(room: RoomState) {
+        val roomHex = hex(room.roomId)
+        if (skSnapshot(roomHex, room.epoch) == null) {
+            saveSkSnapshot(roomHex, room.epoch, rooms.senderKeyDistribution(room, null) { false }.snapshot)
+        }
+    }
+
     private fun roomMaintenance(convId: ConversationId, room: RoomState) {
         val roomHex = hex(room.roomId)
         // 1. Annonce : publie notre bundle pour que les membres puissent nous ouvrir une session 1:1.
@@ -546,7 +564,8 @@ class MeshEngine(
         }
         // 2. Sender Key de l'époque courante, une fois par membre joignable.
         val skDone: (IdentityKey) -> Boolean = { states.get(K_SK_SENT, skKey(roomHex, room.epoch, it)) != null }
-        val distribution = rooms.senderKeyDistribution(room) { !skDone(it) }
+        val distribution = rooms.senderKeyDistribution(room, skSnapshot(roomHex, room.epoch)) { !skDone(it) }
+        saveSkSnapshot(roomHex, room.epoch, distribution.snapshot)
         for (out in distribution.outgoing) {
             messenger(out.recipient).sendControl(out.payload, CONTROL_LIFETIME)
             states.put(K_SK_SENT, skKey(roomHex, room.epoch, out.recipient), byteArrayOf(1))
@@ -609,6 +628,7 @@ class MeshEngine(
             }
             conversationId in roomStates -> {
                 val room = roomStates.getValue(conversationId)
+                ensureSenderKey(room)
                 val env = createEnvelope(EnvelopeKind.DATA, room.keys.tagKey, lifetime()) { aad ->
                     rooms.sealMessage(room, aad, named(name, text))
                 }
@@ -756,6 +776,7 @@ class MeshEngine(
             val roomHex = hex(room.roomId)
             states.delete(K_ROOM, conversationId.value)
             states.deleteWhereIdStartsWith(K_SK_SENT, "$roomHex:")
+            states.deleteWhereIdStartsWith(K_SK_SNAPSHOT, "$roomHex:")
             states.deleteWhereIdStartsWith(K_MS_PENDING, "$roomHex:")
             states.delete(K_ANNOUNCE, roomHex)
             joinRequests.entries.removeAll { it.value.roomId.contentEquals(room.roomId) }.also { states.deleteWhereIdStartsWith(K_JOIN_REQUEST, "$roomHex:") }
@@ -958,6 +979,7 @@ class MeshEngine(
         private const val K_PENDING_JOIN = "pending_join"
         private const val K_JOIN_REQUEST = "join_request"
         private const val K_SK_SENT = "sk_sent"
+        private const val K_SK_SNAPSHOT = "sk_snapshot"
         private const val K_MS_PENDING = "ms_pending"
         private const val K_ANNOUNCE = "announce_at"
         private const val K_TX = "tx"

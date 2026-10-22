@@ -44,7 +44,11 @@ class RoomService(
      */
     class Outgoing(val recipient: IdentityKey, val payload: ByteArray)
 
-    class Distribution(val outgoing: List<Outgoing>, val unreachable: List<IdentityKey>)
+    /**
+     * [snapshot] : le message de distribution de la Sender Key tel qu'il était à la création de la clé. L'appelant doit
+     * le conserver et le repasser aux appels suivants de la même époque (voir [senderKeyDistribution]).
+     */
+    class Distribution(val outgoing: List<Outgoing>, val unreachable: List<IdentityKey>, val snapshot: ByteArray)
 
     class JoinRequest(val roomId: ByteArray, val bundle: ContactBundle)
 
@@ -166,13 +170,21 @@ class RoomService(
 
     // ── Sender Keys ──────────────────────────────────────────────────────────
 
-    /** Crée la Sender Key de l'époque courante et la prépare pour chaque membre joignable. */
-    fun senderKeyDistribution(room: RoomState, include: (IdentityKey) -> Boolean = { true }): Distribution {
-        val skdm = GroupSessionBuilder(store).create(PairwiseSession.addressOf(self.publicKey), RoomKeys.distributionId(room.roomId, room.epoch))
-        val raw = skdm.serialize()
+    /**
+     * Prépare la Sender Key de l'époque courante pour chaque membre joignable.
+     *
+     * **[snapshot]** : libsignal remet la clé *à sa position actuelle* — un destinataire qui la reçoit après qu'on a déjà
+     * écrit ne pourrait jamais lire ces messages. Or ici les clés voyagent avec retard (relais, rotation des liens).
+     * On fige donc le message de distribution à la création de la clé (premier appel, snapshot nul) et l'appelant le
+     * repasse ensuite : tout membre rattrape la chaîne depuis le début de l'époque et lit tout ce qui circule encore
+     * (au plus 24 h). Une rotation (retrait d'un membre) change d'époque, donc de clé : le retiré n'y a pas accès.
+     */
+    fun senderKeyDistribution(room: RoomState, snapshot: ByteArray? = null, include: (IdentityKey) -> Boolean = { true }): Distribution {
+        val raw = snapshot
+            ?: GroupSessionBuilder(store).create(PairwiseSession.addressOf(self.publicKey), RoomKeys.distributionId(room.roomId, room.epoch)).serialize()
         val body = ByteBuffer.allocate(1 + 16 + 4 + 2 + raw.size)
             .put(TYPE_SENDER_KEY).put(room.roomId).putInt(room.epoch).putShort(raw.size.toShort()).put(raw).array()
-        return sendToMembers(room.members.filter { it != self.publicKey && include(it) }) { Outgoing(it, body) }
+        return sendToMembers(room.members.filter { it != self.publicKey && include(it) }, raw) { Outgoing(it, body) }
     }
 
     fun onSenderKey(room: RoomState, sender: IdentityKey, plaintext: ByteArray) {
@@ -291,7 +303,10 @@ class RoomService(
     private fun senderId(id: IdentityKey): ByteArray =
         PairwiseSession.addressOf(id).name.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-    private fun sendToMembers(targets: List<IdentityKey>, build: (IdentityKey) -> Outgoing): Distribution {
+    private fun sendToMembers(targets: List<IdentityKey>, build: (IdentityKey) -> Outgoing): Distribution =
+        sendToMembers(targets, ByteArray(0), build)
+
+    private fun sendToMembers(targets: List<IdentityKey>, snapshot: ByteArray, build: (IdentityKey) -> Outgoing): Distribution {
         val out = ArrayList<Outgoing>()
         val unreachable = ArrayList<IdentityKey>()
         for (t in targets) {
@@ -302,7 +317,7 @@ class RoomService(
             }
             out.add(build(t))
         }
-        return Distribution(out, unreachable)
+        return Distribution(out, unreachable, snapshot)
     }
 
     companion object {
