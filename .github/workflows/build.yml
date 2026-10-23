@@ -162,6 +162,19 @@ jobs:
             grep -A4 -E '(^|: )Error: ' "$f" | head -120 || true   # aucune erreur : grep renvoie 1, ce n'est pas un échec
           done
 
+      - name: "Lint — warnings by rule"
+        if: always()
+        shell: bash
+        run: |
+          f=app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt
+          [ -f "$f" ] || exit 0
+          {
+            echo "### Lint warnings by rule"
+            grep -oE 'Warning: .*\[[A-Za-z0-9]+\]$' "$f" | sed -E 's/.*\[([A-Za-z0-9]+)\]$/\1/' | sort | uniq -c | sort -rn | sed 's/^/- /'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "== details (first 60)"
+          grep -E 'Warning: ' "$f" | head -60
+
       - name: "Lint — summary"
         if: always()
         shell: bash
