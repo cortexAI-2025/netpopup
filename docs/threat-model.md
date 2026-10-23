@@ -148,7 +148,7 @@ Statut **de conception**, une fois l'issue citée livrée : **M** mitigée · **
 | T-34 | Mauvais usage de la crypto | — | libsignal pour tout le protocole ; seules la couche extérieure et les dérivations HKDF sont propres à NetPopUp, testées sur vecteurs connus | mesh-09/21 (#10, #22) | P |
 | T-35 | Dépendance compromise | A9 | Versions figées ; vérification des dépendances Gradle à mettre en place (Q-02) | mesh-03 (#4) | P |
 | T-36 | Nearby (Play services) est du code fermé | A9 | Aucune confiance dans son chiffrement ; une implémentation BLE ouverte est envisagée pour iOS | — | A (H4) |
-| T-37 | Relais Internet (mesh-24, non relié à l'app) : le serveur voit étiquettes, volumes par heure, tailles, IP et quelles étiquettes un compte anonyme relève | A5 | Contenu chiffré de bout en bout ; étiquettes qui tournent chaque heure ; compte anonyme sans donnée NetPopUp ; module hors de l'APK tant qu'il n'est pas relié et validé. Voir `docs/internet-relay.md` | mesh-24 (#25) | P |
+| T-37 | Relais Internet (mesh-24, non relié à l'app) : le serveur voit étiquettes, volumes par heure, tailles, IP et quelles étiquettes un compte anonyme relève | A8 | Contenu chiffré de bout en bout ; étiquettes qui tournent chaque heure ; compte anonyme sans donnée NetPopUp ; module hors de l'APK tant qu'il n'est pas relié et validé. Voir `docs/internet-relay.md` | mesh-24 (#25) | P |
 
 ## 7. Limites assumées en v0
 
