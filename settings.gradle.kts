@@ -29,3 +29,4 @@ include(":core-crypto")       // Kotlin pur : identité, X3DH, Double Ratchet (l
 include(":transport-nearby")  // Android : Transport via Nearby Connections
 include(":store-sql")        // Kotlin pur : schéma SQL, backend du store, états libsignal
 include(":mesh-engine")     // Kotlin pur : MeshChatRepository, assemble toutes les briques
+include(":transport-internet") // Kotlin pur : Transport « relais Internet » (mesh-24), absent de l'app tant qu'on ne l'y relie pas

@@ -770,6 +770,29 @@ class MeshEngine(
         )
     }
 
+    /**
+     * Étiquettes de destination (époques [fromEpoch]..[toEpoch], voir `DestTags.epochOf`) des conversations que ce
+     * téléphone reçoit : room publique, boîte de contact, rooms et leurs demandes d'accès, réponses d'invitation,
+     * conversations 1:1. Un transport de relais (mesh-24) s'en sert pour savoir quoi relever.
+     *
+     * On ne remet au transport que des étiquettes calculées, jamais les clés qui les produisent : celles-ci
+     * permettraient de prévoir toutes les étiquettes futures de la conversation.
+     */
+    suspend fun listeningTags(fromEpoch: Long, toEpoch: Long): List<ByteArray> = onEngine {
+        require(fromEpoch <= toEpoch && toEpoch - fromEpoch < MAX_TAG_EPOCHS) { "epoch range must be 1..$MAX_TAG_EPOCHS" }
+        val keys = LinkedHashMap<String, ByteArray>()
+        fun add(tagKey: ByteArray) { keys.putIfAbsent(hex(tagKey), tagKey) }
+        add(PublicRoom.keys.tagKey)
+        add(Inbox.keys(identity.publicKey).tagKey)
+        for (room in roomStates.values) {
+            room.acceptedKeys(clock()).forEach { add(it.tagKey) }
+            add(room.joinKeys.tagKey)
+        }
+        for (rec in pendingJoins.values) add(rec.invite.replyKeys(identity.publicKey).tagKey)
+        for (peer in knownPeers()) add(messenger(peer).tagKey)
+        keys.values.flatMap { k -> (fromEpoch..toEpoch).map { DestTags.tag(k, it) } }
+    }
+
     suspend fun leave(conversationId: ConversationId) = onEngine {
         if (conversationId == LOCAL_CONVERSATION_ID) return@onEngine
         roomStates.remove(conversationId)?.let { room ->
@@ -987,6 +1010,8 @@ class MeshEngine(
         private const val MAX_DEFERRED = 64
 
         const val DEFAULT_LIFETIME = Envelope.DEFAULT_LIFETIME_SECONDS
+        /** Plage d'époques maximale d'une demande d'étiquettes : 24 h de durée de vie + dérive d'horloge de 2 h, avec marge. */
+        const val MAX_TAG_EPOCHS = 32L
         const val ANNOUNCE_LIFETIME = Envelope.DEFAULT_LIFETIME_SECONDS
         const val CONTROL_LIFETIME = Envelope.MAX_LIFETIME_SECONDS
         const val JOIN_LIFETIME = Envelope.MAX_LIFETIME_SECONDS

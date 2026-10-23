@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Relais muet NetPopUp (mesh-24). Le relais ne range que des octets chiffrés sous une étiquette qui tourne chaque
+// heure : relay/{étiquette}/e/{identifiant} avec deux champs, b (l'enveloppe) et x (sa fin de vie).
+//
+// - On lit en connaissant l'étiquette ; on ne peut ni lister `relay` ni interroger toutes les enveloppes
+//   (pas de requête de groupe de collection : aucune règle `{path=**}/e`).
+// - Rien ne se modifie ni ne s'efface côté client : la politique TTL de Firestore sur `x` purge.
+//
+// NON TESTÉ contre l'émulateur ni un vrai projet à ce jour. Ces règles sont à vérifier (firebase emulators:exec)
+// avant tout déploiement ; voir docs/internet-relay.md.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /relay/{tag}/e/{id} {
+      allow get, list: if request.auth != null
+        && tag.matches('^[0-9a-f]{32}$');
+
+      allow create: if request.auth != null
+        && tag.matches('^[0-9a-f]{32}$')
+        && id.matches('^[0-9a-f]{32}$')
+        && request.resource.data.keys().hasOnly(['b', 'x'])
+        && request.resource.data.b is bytes
+        && request.resource.data.b.size() >= 64
+        && request.resource.data.b.size() <= 4096
+        && request.resource.data.x is timestamp
+        && request.resource.data.x > request.time
+        // 24 h de durée de vie maximale + 2 h de dérive d'horloge tolérée + marge
+        && request.resource.data.x <= request.time + duration.value(27, 'h');
+
+      allow update, delete: if false;
+    }
+
+    // Tout le reste est fermé.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
