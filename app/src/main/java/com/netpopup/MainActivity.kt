@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import android.os.Build
 import com.netpopup.diagnostics.CrashReport
+import com.netpopup.diagnostics.CrashReportDialog
 import com.netpopup.mesh.MeshPermissions
 import com.netpopup.mesh.MessageNotifier
 import com.netpopup.settings.AppSettings
@@ -15,7 +16,10 @@ import com.netpopup.mesh.MeshService
 import com.netpopup.security.SecureWindow
 import com.netpopup.ui.navigation.NavGraph
 import com.netpopup.ui.theme.NetPopUpTheme
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -46,34 +50,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             NetPopUpTheme {
-                var crashText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(crash.pending()) }
-                crashText?.let { text ->
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { crash.clear(); crashText = null },
-                        title = { androidx.compose.material3.Text("The app closed unexpectedly") },
-                        text = {
-                            androidx.compose.foundation.layout.Column(
-                                androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
-                            ) {
-                                androidx.compose.material3.Text("Technical details, kept on this phone only. Copy them to report the problem.")
-                                androidx.compose.foundation.text.selection.SelectionContainer {
-                                    androidx.compose.material3.Text(text, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            androidx.compose.material3.TextButton(onClick = {
-                                val cm = getSystemService(android.content.ClipboardManager::class.java)
-                                cm.setPrimaryClip(android.content.ClipData.newPlainText("NetPopUp crash", text))
-                            }) { androidx.compose.material3.Text("Copy") }
-                        },
-                        dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { crash.clear(); crashText = null }) {
-                                androidx.compose.material3.Text("Close")
-                            }
-                        },
-                    )
-                }
+                var crashText by remember { mutableStateOf(crash.pending()) }
+                crashText?.let { text -> CrashReportDialog(text) { crash.clear(); crashText = null } }
                 if (crashText == null) NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
             }
         }
