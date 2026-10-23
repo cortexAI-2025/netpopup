@@ -1,7 +1,7 @@
 # Protocole d'essai terrain — NetPopUp mesh v0 (mesh-23, issue #24)
 
 But : mesurer le mesh **en conditions réelles** avant d'ajouter un transport Internet (mesh-24, #25) ou de changer
-de routage. **Tant que le rapport de la §9 n'est pas rédigé et validé, mesh-24 ne démarre pas.**
+de routage. **Note :** le propriétaire du projet a fait démarrer mesh-24 (module isolé, non relié à l'application) avant ce rapport ; en revanche, relier le relais à l'application attend toujours le rapport de la §9.
 
 Rien dans ce document n'a encore été exécuté sur téléphone : la colonne « Résultat » reste vide jusqu'à l'essai.
 

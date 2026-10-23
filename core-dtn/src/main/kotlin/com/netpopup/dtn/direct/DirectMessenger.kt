@@ -130,6 +130,12 @@ class DirectMessenger(
         return Sent(messageId, envelope.id)
     }
 
+    /**
+     * Clé d'étiquette de cette conversation. Réservée au moteur : un transport ne doit jamais la recevoir, seulement
+     * des étiquettes calculées (voir `MeshEngine.listeningTags`).
+     */
+    val tagKey: ByteArray get() = keys.tagKey.copyOf()
+
     /** Vrai si l'étiquette de [envelope] est celle de cette conversation (dans les deux sens). */
     fun handles(envelope: Envelope): Boolean = DestTags.matches(keys.tagKey, envelope)
 

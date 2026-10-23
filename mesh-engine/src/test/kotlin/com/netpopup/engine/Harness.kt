@@ -118,6 +118,8 @@ class TestNode(
     private val transportConfig: TransportManagerConfig = TransportManagerConfig(),
     private val seed: Int = 7,
     private val lifetimeSeconds: Int? = null,
+    /** Transports du moteur ; par défaut, la radio simulée. Reçoit le téléphone pour pouvoir lui demander ses étiquettes. */
+    private val transportsFactory: ((TestNode) -> List<com.netpopup.dtn.transport.Transport>)? = null,
 ) {
     private val file = File(dir, "$name.db")
     private lateinit var db: JdbcSqlDatabase
@@ -131,7 +133,7 @@ class TestNode(
         db = JdbcSqlDatabase.open(file)
         transport = LoopbackTransport(name, network)
         engine = MeshEngine(
-            db, listOf(transport), scope, clock,
+            db, transportsFactory?.invoke(this) ?: listOf(transport), scope, clock,
             // Taux de faux positifs quasi nul : un faux positif (0,1 % en production, rattrapé au contact suivant) rend
             // un test non déterministe sans rien prouver de plus.
             EngineConfig(
@@ -188,6 +190,22 @@ class World(private val testScope: TestScope, private val dir: File, private val
     /** [skewMillis] : l'horloge de ce téléphone avance (ou retarde) de cette durée sur celle du monde. */
     fun node(name: String, skewMillis: Long = 0, lifetimeSeconds: Int? = null): TestNode =
         TestNode(name, network, testScope.backgroundScope, dir, { base + skewMillis + testScope.currentTime }, lifetimeSeconds = lifetimeSeconds)
+
+    /**
+     * Un téléphone relié au relais Internet [relay] (et, si [alsoRadio], aussi à la radio simulée : il sert alors de
+     * pont entre les deux mondes).
+     */
+    fun relayNode(name: String, relay: com.netpopup.transport.internet.RelayBackend, alsoRadio: Boolean = false): TestNode {
+        val clock: () -> Long = { base + testScope.currentTime }
+        return TestNode(name, network, testScope.backgroundScope, dir, clock, transportsFactory = { node ->
+            val relayTransport = com.netpopup.transport.internet.RelayTransport(
+                relay, testScope.backgroundScope,
+                com.netpopup.transport.internet.RelayConfig(tags = { from, to -> node.engine.listeningTags(from, to) }),
+                clock, kotlin.random.Random(name.hashCode()),
+            )
+            if (alsoRadio) listOf(node.transport, relayTransport) else listOf(relayTransport)
+        })
+    }
 
     /** Crée et démarre plusieurs téléphones. */
     suspend fun nodes(vararg names: String): List<TestNode> = names.map { node(it).also { n -> n.start() } }

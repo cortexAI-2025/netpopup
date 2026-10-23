@@ -18,6 +18,7 @@ sqlcipher              = "4.5.6"
 sqliteJdbc             = "3.46.1.3"
 androidxSqlite         = "2.4.0"
 robolectric            = "4.11.1"
+orgJson                = "20231013"
 androidxTestCore       = "1.5.0"
 googleServices         = "4.4.1"
 playServicesLocation   = "21.2.0"
@@ -64,6 +65,7 @@ libsignal-client               = { group = "org.signal",           name = "libsi
 libsignal-android              = { group = "org.signal",           name = "libsignal-android",            version.ref = "libsignal" }
 desugar-jdk-libs               = { group = "com.android.tools",    name = "desugar_jdk_libs",             version.ref = "desugarJdkLibs" }
 sqlcipher-android              = { group = "net.zetetic",          name = "sqlcipher-android",            version.ref = "sqlcipher" }
+org-json                       = { group = "org.json",             name = "json",                         version.ref = "orgJson" }
 robolectric                    = { group = "org.robolectric",      name = "robolectric",                  version.ref = "robolectric" }
 androidx-test-core             = { group = "androidx.test",        name = "core",                         version.ref = "androidxTestCore" }
 androidx-sqlite                = { group = "androidx.sqlite",      name = "sqlite",                       version.ref = "androidxSqlite" }

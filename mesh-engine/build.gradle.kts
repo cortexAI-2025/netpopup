@@ -25,5 +25,7 @@ dependencies {
     testImplementation(libs.libsignal.client)
     testImplementation(libs.sqlite.jdbc)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Le relais Internet n'est qu'un banc d'essai ici : le moteur lui-même n'en dépend pas.
+    testImplementation(project(":transport-internet"))
     testImplementation(libs.junit)
 }

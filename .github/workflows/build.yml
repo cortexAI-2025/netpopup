@@ -132,7 +132,7 @@ jobs:
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :core-dtn:test :core-crypto:test :store-sql:test :mesh-engine:test --no-daemon --max-workers=1
+        run: gradle :core-dtn:test :core-crypto:test :store-sql:test :mesh-engine:test :transport-internet:test --no-daemon --max-workers=1
 
       # Tests unitaires des modules Android : la logique du transport Nearby est du Kotlin pur,
       # mais le test de permissions lit le vrai AndroidManifest.xml du module.
