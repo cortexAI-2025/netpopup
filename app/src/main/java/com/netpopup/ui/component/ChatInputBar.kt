@@ -53,8 +53,8 @@ import kotlinx.coroutines.delay
 fun ChatInputBar(
     onSend: (String) -> Unit,
     feedbackManager: FeedbackManager,
-    autoFocus: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    autoFocus: Boolean = true
 ) {
     var text by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }

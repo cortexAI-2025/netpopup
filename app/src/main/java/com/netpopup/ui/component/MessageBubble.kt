@@ -39,7 +39,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+/** Un formateur par appel : `SimpleDateFormat` n'est pas thread-safe et la locale peut changer en cours d'exécution. */
+private fun formatTime(millis: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(millis))
 
 /**
  * Une ligne de message.
@@ -92,7 +93,7 @@ fun MessageBubble(
                     }
                     Text(text = message.body, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = listOfNotNull(timeFormat.format(Date(message.sentAt)), status).joinToString(" · "),
+                        text = listOfNotNull(formatTime(message.sentAt), status).joinToString(" · "),
                         color = TextSecondary,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.align(alignment)

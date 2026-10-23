@@ -27,6 +27,8 @@ data class SettingsUiState(
     val fingerprint: String = "",
 )
 
+// @ApplicationContext : le contexte d'application vit autant que le processus, il ne peut pas fuir une activité.
+@Suppress("StaticFieldLeak")
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: ChatRepository,

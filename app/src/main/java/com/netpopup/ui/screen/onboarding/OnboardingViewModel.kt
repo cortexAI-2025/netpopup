@@ -10,6 +10,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
+// @ApplicationContext : le contexte d'application vit autant que le processus, il ne peut pas fuir une activité.
+@Suppress("StaticFieldLeak")
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val settings: AppSettings,
