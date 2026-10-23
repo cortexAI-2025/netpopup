@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import android.os.Build
+import com.netpopup.diagnostics.CrashReport
+import com.netpopup.diagnostics.CrashReportDialog
 import com.netpopup.mesh.MeshPermissions
 import com.netpopup.mesh.MessageNotifier
 import com.netpopup.settings.AppSettings
@@ -14,6 +16,10 @@ import com.netpopup.mesh.MeshService
 import com.netpopup.security.SecureWindow
 import com.netpopup.ui.navigation.NavGraph
 import com.netpopup.ui.theme.NetPopUpTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -35,12 +41,18 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val onboarded = settings.snapshot.onboardingDone
+        val crash = CrashReport(java.io.File(filesDir, "last_crash.txt"))
+        // Un plantage en attente : ni service ni navigation (qui rouvrent la base) avant que la trace ait pu être copiée,
+        // sinon un plantage de démarrage reproductible referme l'app avant qu'on la lise.
+        val reportPending = crash.pending() != null
         // Après l'onboarding, les permissions ne sont plus demandées ici : les réglages s'en chargent.
-        if (onboarded && settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
+        if (!reportPending && onboarded && settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
 
         setContent {
             NetPopUpTheme {
-                NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
+                var crashText by remember { mutableStateOf(crash.pending()) }
+                crashText?.let { text -> CrashReportDialog(text) { crash.clear(); crashText = null } }
+                if (crashText == null) NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
             }
         }
     }
