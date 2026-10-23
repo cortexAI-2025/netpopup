@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
 }
 
 android {
@@ -62,11 +61,16 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Exigé par libsignal-android (java.time, etc.)
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true }
+
+    // Robolectric charge le manifeste fusionné et les ressources : les tests d'interface tournent sur la JVM.
+    testOptions { unitTests { isIncludeAndroidResources = true } }
 
     composeOptions {
         // Compose compiler pour Kotlin 1.9.22
@@ -75,6 +79,8 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // Variante de test de libsignal (~65 Mo par ABI) : inutile dans l'application livrée
+        jniLibs { excludes += "**/libsignal_jni_testing.so" }
     }
 }
 
@@ -82,6 +88,12 @@ dependencies {
     // Mesh DTN
     implementation(project(":core-dtn"))
     implementation(project(":core-crypto"))
+    implementation(project(":store-sql"))
+    implementation(project(":mesh-engine"))
+    implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.sqlite) // supertype de SQLiteDatabase (SQLCipher) : requis pour compiler
+    implementation(libs.libsignal.android)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":transport-nearby"))
 
     // Core
@@ -107,24 +119,18 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth.ktx)
-    implementation(libs.firebase.firestore.ktx)
-    implementation(libs.firebase.messaging.ktx)
-
     // DataStore (local user prefs)
     implementation(libs.androidx.datastore.preferences)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.play.services)
-
-    // Location (approximate geo zone)
-    implementation(libs.play.services.location)
 
     // Tests
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

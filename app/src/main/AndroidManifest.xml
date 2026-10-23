@@ -1,23 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- Network access -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Approximate location for geo-zone computation (coarse only — no precise GPS) -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Post notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Wake lock for FCM background delivery -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Mesh : service de premier plan de type connectedDevice (Android 14 exige la seconde) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+    <!-- Un service connectedDevice (Android 14) exige l'une de ces permissions, déclarée par l'application elle-même
+         (lint : ForegroundServicePermission). Elles viennent aussi de :transport-nearby ; la fusion les unifie. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
         android:name=".NetPopUpApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:ignore="UnusedAttribute"
         android:fullBackupContent="@xml/backup_rules"
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
@@ -37,14 +39,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Firebase Cloud Messaging service -->
+        <!-- Mesh : garde la découverte Bluetooth active en arrière-plan -->
         <service
-            android:name=".service.NetPopUpMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
+            android:name=".mesh.MeshService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
     </application>
 

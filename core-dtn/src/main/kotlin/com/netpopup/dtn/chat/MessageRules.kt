@@ -17,10 +17,16 @@ object MessageRules {
     /** Plafond de messages en clair gardés par room. */
     const val MAX_MESSAGES_PER_ROOM = 1_000
 
-    const val ROOM_CODE_LENGTH = 6
+    const val ROOM_LINK_PREFIX = "netpopup://room/"
+    const val CONTACT_LINK_PREFIX = "netpopup://contact/"
 
-    /** Sans O/0 ni I/1, pour éviter les confusions à la lecture. */
-    const val ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    /** Une invitation de room encode 68 octets ; un lien plus court est forcément tronqué. */
+    const val MIN_ROOM_LINK_BODY = 91
+    const val MAX_ROOM_LINK_LENGTH = 512
+
+    /** Un bundle avec pré-clé Kyber fait environ 1,8 Ko, soit ~2,4 Ko en base64. */
+    const val MIN_CONTACT_LINK_BODY = 100
+    const val MAX_CONTACT_LINK_LENGTH = 3_000
 
     /**
      * Retourne le texte nettoyé (espaces de bord retirés), prêt à chiffrer.
@@ -36,17 +42,27 @@ object MessageRules {
         return trimmed
     }
 
+    private val base64Url = Regex("^[A-Za-z0-9_-]+$")
+
     /**
-     * Retourne le code en majuscules, sans espaces ni tirets.
+     * Vérifie la forme d'un lien d'invitation de room (préfixe, alphabet, longueur) et le renvoie nettoyé.
+     * La validation complète — version, clés, politique — est faite par le moteur au décodage.
      *
-     * @throws InvalidRoomCodeException si le code n'a pas [ROOM_CODE_LENGTH] caractères
-     *         de [ROOM_CODE_ALPHABET].
+     * @throws InvalidInviteException si le lien n'a pas la forme d'une invitation.
      */
-    fun normalizeRoomCode(code: String): String {
-        val normalized = code.uppercase().filterNot { it.isWhitespace() || it == '-' }
-        if (normalized.length != ROOM_CODE_LENGTH || normalized.any { it !in ROOM_CODE_ALPHABET }) {
-            throw InvalidRoomCodeException("Room code must be $ROOM_CODE_LENGTH characters from $ROOM_CODE_ALPHABET")
-        }
-        return normalized
+    fun normalizeInviteLink(link: String): String =
+        normalizeLink(link, ROOM_LINK_PREFIX, MIN_ROOM_LINK_BODY, MAX_ROOM_LINK_LENGTH, "room invitation")
+
+    /** Même vérification de forme pour un lien de contact. */
+    fun normalizeContactLink(link: String): String =
+        normalizeLink(link, CONTACT_LINK_PREFIX, MIN_CONTACT_LINK_BODY, MAX_CONTACT_LINK_LENGTH, "contact")
+
+    private fun normalizeLink(link: String, prefix: String, minBody: Int, maxLength: Int, what: String): String {
+        val trimmed = link.trim()
+        if (trimmed.length > maxLength) throw InvalidInviteException("The $what link is too long")
+        if (!trimmed.startsWith(prefix)) throw InvalidInviteException("This is not a $what link")
+        val body = trimmed.removePrefix(prefix)
+        if (body.length < minBody || !base64Url.matches(body)) throw InvalidInviteException("The $what link is damaged")
+        return trimmed
     }
 }

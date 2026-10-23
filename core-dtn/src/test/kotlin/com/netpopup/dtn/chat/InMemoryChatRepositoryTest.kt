@@ -96,9 +96,9 @@ class InMemoryChatRepositoryTest {
     }
 
     @Test
-    fun `created room has a valid code and its admission policy`() = runTest {
+    fun `created room has a well formed invite link and its admission policy`() = runTest {
         val invite = repo.createRoom("Amis", AdmissionPolicy.CREATOR_ONLY)
-        assertEquals(invite.code, MessageRules.normalizeRoomCode(invite.code))
+        assertEquals(invite.link, MessageRules.normalizeInviteLink(invite.link))
         val room = repo.observeConversations().first().single { it.id == invite.conversationId }
         assertEquals(ConversationKind.ROOM, room.kind)
         assertEquals(AdmissionPolicy.CREATOR_ONLY, room.admission)
@@ -107,10 +107,11 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun `join request stays pending until accepted`() = runTest {
-        repo.requestToJoin("xk7b2q")
-        assertEquals(listOf("XK7B2Q"), repo.observePendingJoins().first().map { it.code })
+        val link = MessageRules.ROOM_LINK_PREFIX + "Qk7B2".repeat(19)
+        val pending = repo.requestToJoin(" $link ")
+        assertEquals(listOf(pending.inviteId), repo.observePendingJoins().first().map { it.inviteId })
 
-        val roomId = repo.simulateJoinAccepted("XK7B2Q", "Amis")
+        val roomId = repo.simulateJoinAccepted(link, "Amis")
         assertTrue(repo.observePendingJoins().first().isEmpty())
         assertNotNull(repo.observeConversations().first().singleOrNull { it.id == roomId })
     }

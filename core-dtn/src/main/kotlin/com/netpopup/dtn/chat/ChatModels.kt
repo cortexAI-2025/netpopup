@@ -4,6 +4,9 @@ package com.netpopup.dtn.chat
 @JvmInline
 value class ConversationId(val value: String)
 
+/** La room locale publique : toujours présente, jamais quittée. */
+val LOCAL_CONVERSATION_ID = ConversationId("local")
+
 /** Identifiant local d'un message affiché. */
 @JvmInline
 value class MessageId(val value: String)
@@ -71,15 +74,21 @@ data class ChatMessage(
     val readAt: Long? = null
 )
 
-/** Room créée localement, avec le code à partager pour demander l'accès. */
+/**
+ * Room créée localement, avec le lien d'invitation à partager (en personne, par QR ou texte).
+ * Le lien porte tout ce qu'il faut pour demander l'accès — room, code, créateur, politique — mais
+ * ne donne aucun accès aux messages : un membre doit accepter.
+ */
 data class RoomInvite(
     val conversationId: ConversationId,
-    val code: String
+    val link: String
 )
 
 /** Demande d'accès envoyée par cet appareil, en attente d'un membre. */
 data class PendingJoin(
-    val code: String,
+    /** Identifiant court et stable de l'invitation, pour l'affichage. */
+    val inviteId: String,
+    val roomName: String,
     val requestedAt: Long
 )
 
@@ -101,3 +110,34 @@ data class MeshStatus(
         val STOPPED = MeshStatus(isRunning = false, peersInRange = 0)
     }
 }
+
+/** Ce que l'écran des réglages affiche de l'état du mesh, au-delà des pairs à portée. */
+data class MeshInfo(
+    /** Enveloppes gardées sur l'appareil (messages en transit compris). */
+    val storedEnvelopes: Int,
+    /**
+     * Vrai quand plusieurs enveloppes reçues ont été refusées pour une date incohérente : l'horloge de ce
+     * téléphone (ou celle des pairs) s'écarte probablement de plus de 2 h. C'est une présomption, pas une mesure.
+     */
+    val clockSkewSuspected: Boolean
+) {
+    companion object { val EMPTY = MeshInfo(0, false) }
+}
+
+/** Membre d'une room privée, identifié par l'empreinte de sa clé d'identité. */
+data class RoomMember(
+    val identityKey: String,
+    val displayName: String,
+    val isSelf: Boolean
+)
+
+/**
+ * Ce que l'écran d'une room privée affiche en plus des messages : les membres, l'empreinte de
+ * sécurité à comparer en personne, et l'état de la rotation après un retrait.
+ */
+data class RoomDetails(
+    val members: List<RoomMember>,
+    /** Empreinte affichable, groupes de chiffres séparés par des espaces. */
+    val securityFingerprint: String,
+    val keyRotationPending: Boolean
+)

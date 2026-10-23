@@ -2,85 +2,32 @@ package com.netpopup.ui.screen.rooms
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.netpopup.data.model.Room
-import com.netpopup.data.repository.AuthRepository
-import com.netpopup.data.repository.RoomRepository
+import com.netpopup.dtn.chat.AdmissionPolicy
+import com.netpopup.dtn.chat.ChatRepository
+import com.netpopup.dtn.chat.ConversationId
+import com.netpopup.dtn.presentation.RoomsPresenter
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class RoomsUiState(
-    val isLoading: Boolean  = false,
-    val createdRoom: Room?  = null,
-    val joinedRoom: Room?   = null,
-    val joinCode: String    = "",
-    val error: String?      = null,
-    /** true when we just created or joined a room and should navigate */
-    val navigateTo: String? = null
-)
-
-/**
- * ViewModel for the Private Rooms screen — handles:
- *  - Creating a new private room (auto-generated code).
- *  - Joining an existing room via code.
- */
+/** Enveloppe Android de [RoomsPresenter]. */
 @HiltViewModel
-class RoomsViewModel @Inject constructor(
-    private val authRepository: AuthRepository,
-    private val roomRepository: RoomRepository
-) : ViewModel() {
+class RoomsViewModel @Inject constructor(repository: ChatRepository) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(RoomsUiState())
-    val uiState: StateFlow<RoomsUiState> = _uiState.asStateFlow()
+    private val presenter = RoomsPresenter(repository, viewModelScope)
 
-    fun onJoinCodeChanged(code: String) {
-        _uiState.update { it.copy(joinCode = code.uppercase().take(8)) }
-    }
+    val uiState = presenter.state
 
-    fun createRoom() {
-        _uiState.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                authRepository.ensureSignedIn()
-                val room = roomRepository.createPrivateRoom()
-                _uiState.update {
-                    it.copy(isLoading = false, createdRoom = room, navigateTo = room.id)
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
-            }
-        }
-    }
-
-    fun joinRoom() {
-        val code = _uiState.value.joinCode.trim()
-        if (code.length < 6) {
-            _uiState.update { it.copy(error = "Enter a valid 6-character code") }
-            return
-        }
-
-        _uiState.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val room = roomRepository.joinPrivateRoom(code)
-                if (room != null) {
-                    _uiState.update {
-                        it.copy(isLoading = false, joinedRoom = room, navigateTo = room.id)
-                    }
-                } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Room not found") }
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
-            }
-        }
-    }
-
-    fun onNavigated() = _uiState.update { it.copy(navigateTo = null) }
-
-    fun clearError() = _uiState.update { it.copy(error = null) }
+    fun onTitleChanged(title: String) = presenter.onTitleChanged(title)
+    fun onAdmissionChanged(policy: AdmissionPolicy) = presenter.onAdmissionChanged(policy)
+    fun onInviteLinkChanged(link: String) = presenter.onInviteLinkChanged(link)
+    fun onContactLinkChanged(link: String) = presenter.onContactLinkChanged(link)
+    fun addContact() = presenter.addContact()
+    fun createRoom() = presenter.createRoom()
+    fun requestToJoin() = presenter.requestToJoin()
+    fun approve(requestId: String) = presenter.approve(requestId)
+    fun reject(requestId: String) = presenter.reject(requestId)
+    fun leave(id: ConversationId) = presenter.leave(id)
+    fun dismissCreatedInvite() = presenter.dismissCreatedInvite()
+    fun onNavigated() = presenter.onNavigated()
+    fun clearError() = presenter.clearError()
 }

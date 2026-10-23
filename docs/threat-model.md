@@ -158,7 +158,8 @@ Ces limites seront expliquées aux utilisateurs dans la documentation (mesh-22, 
 3. **Un membre retiré peut encore lire pendant un temps** les enveloppes en vol et celles des membres pas encore informés de la rotation (T-06).
 4. **Pas de défense Sybil** : un attaquant déterminé peut saturer le voisinage (T-22) ou brouiller (T-25).
 5. **Un appareil déverrouillé, app ouverte, montre tout** (T-12).
-6. **Le premier contact via une room est du TOFU** tant que l'empreinte n'est pas vérifiée (T-15).
+6. **Un nouveau membre lit ce que sa room contient encore** : les clés de room voyagent avec retard, donc chaque Sender Key est distribuée depuis le début de l'époque. Un membre admis peut lire les messages de l'époque encore en circulation (24 h au plus) ; un retrait change d'époque et de clé. Mesuré : sans cela, un message écrit avant que la clé n'atteigne un membre lui restait illisible à jamais.
+7. **Le premier contact via une room est du TOFU** tant que l'empreinte n'est pas vérifiée (T-15).
 
 ## 8. Hors périmètre
 

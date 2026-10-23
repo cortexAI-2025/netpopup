@@ -56,6 +56,12 @@ class EnvelopeStore(
         if (backend.hasTombstone(id)) return InsertResult.Tombstoned
         if (envelope.isExpired(nowSeconds)) return InsertResult.Expired
 
+        // Un ACK arrivé avant sa DATA : la DATA est déjà acquittée, inutile de la stocker ni de la relayer.
+        if (envelope.kind == EnvelopeKind.DATA && isAcknowledgedByStoredAck(envelope)) {
+            backend.putTombstone(id, tombstonePurgeAt(envelope))
+            return InsertResult.Tombstoned
+        }
+
         // On choisit d'abord les victimes sans rien modifier : si l'enveloppe est
         // finalement refusée, aucune autre n'aura été sacrifiée pour rien.
         val all = backend.all()
@@ -88,7 +94,20 @@ class EnvelopeStore(
 
         victims.forEach { evict(it, nowSeconds) }
         backend.put(StoredEnvelope(envelope, origin, nowSeconds))
+        // Un ACK supprime la DATA qu'il acquitte, puis reste stocké pour être relayé jusqu'à sa durée de vie.
+        if (envelope.kind == EnvelopeKind.ACK) applyAck(envelope.ack)
         return InsertResult.Stored(victims.map { it.id })
+    }
+
+    /**
+     * Retire du store une enveloppe livrée à cet appareil : inutile de la relayer, et la pierre
+     * tombale empêche qu'elle revienne. Sans effet si elle n'est pas (ou plus) stockée.
+     */
+    @Synchronized
+    fun markDelivered(id: EnvelopeId): Boolean {
+        val entry = backend.get(id) ?: return false
+        removeWithTombstone(entry)
+        return true
     }
 
     /**
@@ -98,7 +117,7 @@ class EnvelopeStore(
      */
     @Synchronized
     fun applyAck(ackToken: ByteArray): EnvelopeId? {
-        if (ackToken.size != Envelope.FIELD_SIZE) return null
+        if (ackToken.size != Envelope.FIELD_SIZE || ackToken.all { it == 0.toByte() }) return null
         val expected = AckTokens.hash(ackToken)
         val match = backend.all().firstOrNull {
             it.envelope.kind == EnvelopeKind.DATA && it.envelope.ack.contentEquals(expected)
@@ -128,6 +147,10 @@ class EnvelopeStore(
     @Synchronized
     fun all(): List<StoredEnvelope> = backend.all()
 
+    /** IDs stockés et sous pierre tombale : ce qu'un pair n'a pas besoin de nous renvoyer. */
+    @Synchronized
+    fun knownIds(): List<EnvelopeId> = backend.all().map { it.id } + backend.tombstoneIds()
+
     @Synchronized
     fun stats(): StoreStats {
         val all = backend.all()
@@ -140,6 +163,17 @@ class EnvelopeStore(
     }
 
     // ── Interne ──────────────────────────────────────────────────────────────
+
+    /** Vrai si un `ACK` déjà stocké porte le jeton dont le hachage figure dans le champ `ack` de [data]. */
+    private fun isAcknowledgedByStoredAck(data: Envelope): Boolean {
+        val wanted = data.ack
+        if (wanted.all { it == 0.toByte() }) return false   // pas d'ACK demandé (rooms)
+        return backend.all().any {
+            it.envelope.kind == EnvelopeKind.ACK &&
+                it.envelope.ack.size == Envelope.FIELD_SIZE &&
+                AckTokens.hash(it.envelope.ack).contentEquals(wanted)
+        }
+    }
 
     /** Expirées d'abord, puis `RELAY` par expiration la plus proche. Jamais de `SELF` non expirée. */
     private fun evictionCandidates(entries: List<StoredEnvelope>, nowSeconds: Long): List<StoredEnvelope> {

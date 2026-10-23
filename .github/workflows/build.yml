@@ -5,6 +5,11 @@ on:
     branches: ['**']
   pull_request:
 
+# Un nouveau push annule le run précédent de la même branche (les runs Android durent ~15 min).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   # ── Job 1: Build Android (debug APK + signed release APK + AAB) ──────────────
@@ -111,12 +116,97 @@ jobs:
         run: gradle assembleDebug --no-daemon --max-workers=1
 
 
+      # Permissions réellement présentes dans l'APK (manifeste fusionné, dépendances comprises).
+      - name: "Merged manifest — permissions"
+        shell: bash
+        run: |
+          f=$(find app/build/intermediates -path '*debug*' -name AndroidManifest.xml | grep -i merged | head -1)
+          echo "manifeste : $f"
+          {
+            echo "### Permissions du manifeste fusionné (debug)"
+            grep -o 'uses-permission[^>]*android:name="[^"]*"[^>]*' "$f" | sed 's/.*android:name="\([^"]*\)"\(.*\)/- \1\2/'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: "Unit tests — JVM core modules"
         shell: bash
         env:
           JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
-        run: gradle :core-dtn:test :core-crypto:test --no-daemon --max-workers=1
+        run: gradle :core-dtn:test :core-crypto:test :store-sql:test :mesh-engine:test --no-daemon --max-workers=1
+
+      # Tests unitaires des modules Android : la logique du transport Nearby est du Kotlin pur,
+      # mais le test de permissions lit le vrai AndroidManifest.xml du module.
+      - name: "Unit tests — Android modules"
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle :transport-nearby:testDebugUnitTest :app:testDebugUnitTest --no-daemon --max-workers=1
+
+      # Lint des modules Android : toute erreur de sévérité « error » fait échouer la CI (mesh-03).
+      # Les rapports sont publiés dans tous les cas.
+      - name: "Lint — Android modules"
+        shell: bash
+        env:
+          JAVA_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+        run: gradle :app:lintDebug :transport-nearby:lintDebug --no-daemon --max-workers=1
+
+      - name: "Lint — errors"
+        if: always()
+        shell: bash
+        run: |
+          for f in app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt transport-nearby/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt; do
+            [ -f "$f" ] || continue
+            echo "== $f"
+            grep -A4 -E '(^|: )Error: ' "$f" | head -120 || true   # aucune erreur : grep renvoie 1, ce n'est pas un échec
+          done
+
+      - name: "Lint — warnings by rule"
+        if: always()
+        shell: bash
+        run: |
+          f=app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt
+          [ -f "$f" ] || exit 0
+          {
+            echo "### Lint warnings by rule"
+            grep -oE 'Warning: .*\[[A-Za-z0-9]+\]$' "$f" | sed -E 's/.*\[([A-Za-z0-9]+)\]$/\1/' | sort | uniq -c | sort -rn | sed 's/^/- /'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "== details (first 60)"
+          grep -E 'Warning: ' "$f" | head -60
+
+      - name: "Lint — summary"
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Android Lint"
+            for f in app/build/reports/lint-results-debug.xml transport-nearby/build/reports/lint-results-debug.xml; do
+              [ -f "$f" ] || { echo "- $f : absent"; continue; }
+              echo "- \`$f\` : $(grep -c '<issue ' "$f") issue(s) — $(grep -o 'severity="[A-Za-z]*"' "$f" | sort | uniq -c | tr '\n' ' ')"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/tests/
+            **/build/reports/lint-results-*.html
+            **/build/reports/lint-results-*.xml
+          if-no-files-found: ignore
+
+      - name: "Debug APK — checksum and summary"
+        shell: bash
+        run: |
+          {
+            echo "### APK debug pour les essais terrain"
+            ls -l app/build/outputs/apk/debug/*.apk | awk '{printf "- %s : %.1f Mo\n", $9, $5/1048576}'
+            echo "- SHA-256 : \`$(sha256sum app/build/outputs/apk/debug/*.apk | cut -d' ' -f1)\`"
+            echo "- commit : \`${GITHUB_SHA}\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -124,6 +214,7 @@ jobs:
           name: netpopup-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 30
 
       # ── Keystore CI généré à la volée (pas de secrets nécessaires) ───────────
       - name: Generate CI keystore
@@ -147,6 +238,13 @@ jobs:
             "-Pandroid.injected.signing.store.password=ci_password" \
             "-Pandroid.injected.signing.key.alias=release" \
             "-Pandroid.injected.signing.key.password=ci_password"
+
+      - name: Report APK sizes
+        run: |
+          {
+            echo "### Taille des APK"
+            ls -l app/build/outputs/apk/*/*.apk | awk '{printf "- %s : %.1f Mo\n", $9, $5/1048576}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload signed release APK
         uses: actions/upload-artifact@v4
