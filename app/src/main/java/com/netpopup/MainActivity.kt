@@ -37,10 +37,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val onboarded = settings.snapshot.onboardingDone
-        // Après l'onboarding, les permissions ne sont plus demandées ici : les réglages s'en chargent.
-        if (onboarded && settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
-
         val crash = CrashReport(java.io.File(filesDir, "last_crash.txt"))
+        // Un plantage en attente : ni service ni navigation (qui rouvrent la base) avant que la trace ait pu être copiée,
+        // sinon un plantage de démarrage reproductible referme l'app avant qu'on la lise.
+        val reportPending = crash.pending() != null
+        // Après l'onboarding, les permissions ne sont plus demandées ici : les réglages s'en chargent.
+        if (!reportPending && onboarded && settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
+
         setContent {
             NetPopUpTheme {
                 var crashText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(crash.pending()) }
@@ -71,7 +74,7 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
-                NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
+                if (crashText == null) NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
             }
         }
     }
