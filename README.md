@@ -28,8 +28,8 @@ No `google-services.json` is required. The archived Firebase prototype is in
 
 ## Android verification
 
-The CI builds debug APKs and runs JVM tests, lint and an Android 15 emulator job.
-The device job exercises real onboarding, the name-to-permissions transition,
+The CI builds debug APKs and runs JVM tests, lint and an Android 10/11/15 emulator matrix.
+The device jobs exercise fresh cryptographic identity creation and real onboarding, the name-to-permissions transition,
 activity recreation, offline message storage and native encrypted database tests.
 A successful APK build alone does not establish that the device job passed.
 
