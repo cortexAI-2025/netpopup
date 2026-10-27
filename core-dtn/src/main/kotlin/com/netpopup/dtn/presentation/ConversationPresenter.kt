@@ -8,12 +8,14 @@ import com.netpopup.dtn.chat.InvalidMessageException
 import com.netpopup.dtn.chat.MessageId
 import com.netpopup.dtn.chat.RoomDetails
 import com.netpopup.dtn.chat.UnknownConversationException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -67,6 +69,9 @@ class ConversationPresenter(
                     roomDetails = details,
                     error = if (conversation == null) CONVERSATION_NOT_FOUND else null,
                 )
+            }.catch { error ->
+                if (error is CancellationException) throw error
+                _state.update { it.copy(isLoading = false, error = OPERATION_FAILED) }
             }.collect { fresh ->
                 // Une erreur d'action (envoi refusé…) survit au rafraîchissement des données.
                 _state.update { old -> fresh.copy(error = fresh.error ?: old.error) }
@@ -85,26 +90,43 @@ class ConversationPresenter(
             try {
                 repository.sendText(conversationId, text)
                 _state.update { it.copy(error = null) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: InvalidMessageException) {
                 lastSentAt = Long.MIN_VALUE // un texte refusé ne compte pas dans le débit
                 _state.update { it.copy(error = e.message ?: INVALID_MESSAGE) }
             } catch (e: UnknownConversationException) {
                 _state.update { it.copy(error = CONVERSATION_NOT_FOUND) }
+            } catch (e: Exception) {
+                lastSentAt = Long.MIN_VALUE
+                _state.update { it.copy(error = OPERATION_FAILED) }
             }
         }
     }
 
     /** À appeler tant que la conversation est affichée : les messages reçus sont marqués lus. */
     fun markRead() {
-        scope.launch { repository.markRead(conversationId) }
+        launchAction { repository.markRead(conversationId) }
     }
 
     fun deleteLocally(messageId: MessageId) {
-        scope.launch { repository.deleteLocally(messageId) }
+        launchAction { repository.deleteLocally(messageId) }
     }
 
     fun blockSender(identityKey: String) {
-        scope.launch { blockSender.invoke(identityKey) }
+        launchAction { blockSender.invoke(identityKey) }
+    }
+
+    private fun launchAction(action: suspend () -> Unit) {
+        scope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(error = OPERATION_FAILED) }
+            }
+        }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }
@@ -112,6 +134,7 @@ class ConversationPresenter(
     companion object {
         /** Un message par seconde au plus : même règle que le seau à jetons des pairs. */
         const val MIN_INTERVAL_MS = 1_000L
+        const val OPERATION_FAILED = "Unable to complete this action. Please try again."
         const val TOO_FAST = "Please wait before sending again"
         const val INVALID_MESSAGE = "Message cannot be sent"
         const val CONVERSATION_NOT_FOUND = "Conversation not found"

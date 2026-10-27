@@ -94,6 +94,20 @@ class RoomsPresenterTest {
         assertNotNull(p.state.value.error)
     }
 
+    @Test fun existingContactsRemainReachableWhenTheRoomsScreenIsReopened() = runTest {
+        val repo = InMemoryChatRepository()
+        val id = repo.addContact(MessageRules.CONTACT_LINK_PREFIX + "C".repeat(300))
+        repo.createRoom("Neighbours")
+        val first = presenter(repo)
+        runCurrent()
+        assertEquals(listOf(id), first.state.value.contacts.map { it.id })
+        assertTrue(first.state.value.rooms.none { it.id == id })
+        val reopened = presenter(repo)
+        runCurrent()
+        assertEquals(listOf(id), reopened.state.value.contacts.map { it.id })
+        assertNull(reopened.state.value.navigateTo)
+    }
+
     @Test fun incomingRequestsCanBeApprovedOrRejected() = runTest {
         val repo = InMemoryChatRepository()
         val room = repo.createRoom("R").conversationId

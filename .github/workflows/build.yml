@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: ['claude/netpopup-android-mvp-fC5Cp']
   pull_request:
+  workflow_dispatch:
 
 # Un nouveau push annule le run précédent de la même branche (les runs Android durent ~15 min).
 concurrency:

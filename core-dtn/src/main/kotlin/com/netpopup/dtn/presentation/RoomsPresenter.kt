@@ -9,6 +9,7 @@ import com.netpopup.dtn.chat.InvalidInviteException
 import com.netpopup.dtn.chat.JoinRequest
 import com.netpopup.dtn.chat.PendingJoin
 import com.netpopup.dtn.chat.RoomInvite
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,8 @@ data class RoomsUiState(
     val isLoading: Boolean = false,
     /** Rooms privées de cet appareil. */
     val rooms: List<Conversation> = emptyList(),
+    /** Existing direct conversations remain reachable after leaving the chat or restarting. */
+    val contacts: List<Conversation> = emptyList(),
     val title: String = "",
     val admission: AdmissionPolicy = AdmissionPolicy.ANY_MEMBER,
     /** Lien d'invitation collé ou scanné pour demander l'accès à une room. */
@@ -48,21 +51,26 @@ class RoomsPresenter(
     val state: StateFlow<RoomsUiState> = _state.asStateFlow()
 
     init {
-        scope.launch {
+        launchAction {
             repository.observeConversations().collect { all ->
-                _state.update { it.copy(rooms = all.filter { c -> c.kind == ConversationKind.ROOM }) }
+                _state.update { it.copy(
+                    rooms = all.filter { c -> c.kind == ConversationKind.ROOM },
+                    contacts = all.filter { c -> c.kind == ConversationKind.DIRECT },
+                ) }
             }
         }
         scope.launch {
             try {
                 val link = repository.myContactLink()
                 _state.update { it.copy(myContactLink = link) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Le lien de contact est un confort : l'écran reste utilisable sans.
             }
         }
-        scope.launch { repository.observePendingJoins().collect { p -> _state.update { it.copy(pendingJoins = p) } } }
-        scope.launch { repository.observeJoinRequests().collect { r -> _state.update { it.copy(joinRequests = r) } } }
+        launchAction { repository.observePendingJoins().collect { p -> _state.update { it.copy(pendingJoins = p) } } }
+        launchAction { repository.observeJoinRequests().collect { r -> _state.update { it.copy(joinRequests = r) } } }
     }
 
     fun onTitleChanged(title: String) = _state.update { it.copy(title = title.take(MAX_TITLE)) }
@@ -86,6 +94,8 @@ class RoomsPresenter(
                 _state.update {
                     it.copy(isLoading = false, title = "", createdInvite = invite, navigateTo = invite.conversationId)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: GENERIC_ERROR) }
             }
@@ -102,6 +112,8 @@ class RoomsPresenter(
                 _state.update { it.copy(isLoading = false, inviteLink = "") }
             } catch (e: InvalidInviteException) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: INVALID_LINK) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: GENERIC_ERROR) }
             }
@@ -118,6 +130,8 @@ class RoomsPresenter(
                 _state.update { it.copy(isLoading = false, contactLink = "", navigateTo = id) }
             } catch (e: InvalidInviteException) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: INVALID_LINK) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: GENERIC_ERROR) }
             }
@@ -125,15 +139,27 @@ class RoomsPresenter(
     }
 
     fun approve(requestId: String) {
-        scope.launch { repository.approveJoinRequest(requestId) }
+        launchAction { repository.approveJoinRequest(requestId) }
     }
 
     fun reject(requestId: String) {
-        scope.launch { repository.rejectJoinRequest(requestId) }
+        launchAction { repository.rejectJoinRequest(requestId) }
     }
 
     fun leave(id: ConversationId) {
-        scope.launch { repository.leave(id) }
+        launchAction { repository.leave(id) }
+    }
+
+    private fun launchAction(action: suspend () -> Unit) {
+        scope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = GENERIC_ERROR) }
+            }
+        }
     }
 
     fun dismissCreatedInvite() = _state.update { it.copy(createdInvite = null) }

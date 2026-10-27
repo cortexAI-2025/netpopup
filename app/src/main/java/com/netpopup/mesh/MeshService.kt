@@ -21,6 +21,7 @@ import com.netpopup.settings.AppSettings
 import kotlinx.coroutines.flow.first
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,12 +89,21 @@ class MeshService : Service() {
         }
         notifyJob?.cancel()
         notifyJob = scope.launch {
-            val repository = runtime.repository
-            repository.observeIncoming().collect { message ->
-                val blocked = repository.observeBlocked().first()
-                if (NotificationPolicy.shouldNotify(message, settings.snapshot.notificationsEnabled, blocked, ActiveConversation.current.value)) {
-                    notifier.show()
+            try {
+                runtime.prepare() // Also gates sticky restarts when no Activity is present.
+                val repository = runtime.repository
+                repository.observeIncoming().collect { message ->
+                    val blocked = repository.observeBlocked().first()
+                    if (NotificationPolicy.shouldNotify(message, settings.snapshot.notificationsEnabled, blocked, ActiveConversation.current.value)) {
+                        notifier.show()
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                stopSelf()
+            } catch (e: LinkageError) {
+                stopSelf()
             }
         }
         return START_STICKY

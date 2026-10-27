@@ -12,13 +12,18 @@
 - Failed schema initialization closes the database handle.
 - Diagnostic reads tolerate missing/unreadable paths and cap their size.
 - Real Android 15 onboarding/send/recreation and SQLCipher/Keystore tests added to CI.
+- Saved direct conversations are listed in Contacts and can be reopened.
+- Presenter action/stream failures become visible errors; coroutine cancellation is preserved.
 - Debug ZIP includes the APK checksum; CI release signing is explicitly a test identity.
 
 ## Evidence
 
 The previous diagnostic-only commit `3ceee4a` passed run 40016124543 on 2026-10-23.
-That result does not validate the changes in this branch. Check this branch's exact
-commit and both CI jobs before distributing its APK.
+The first startup revision `444dcca` passed all five native/instrumented tests on
+Android 15 in run 40539968013 (job 122315382084). The startup journey uses the real
+Hilt graph, SQLCipher, Android Keystore and libsignal. This verifies onboarding,
+activity recreation, offline send and encrypted-storage checks on an emulator.
+Subsequent changes must pass their own CI before distributing their APK.
 
 Local environment: Java 17 is installed; Android SDK and Gradle cache are absent.
 Local whitespace/diff checks are available. Full compilation and execution must

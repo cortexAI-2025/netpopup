@@ -200,6 +200,15 @@ fun RoomsContent(state: RoomsUiState, actions: RoomsActions, modifier: Modifier 
 
         // ── Contacts ──────────────────────────────────────────────────────────
         item { SectionHeader("Contacts") }
+        items(state.contacts, key = { "contact-" + it.id.value }) { contact ->
+            Column(
+                Modifier.fillMaxWidth().clickable { actions.onOpenRoom(contact.id) }.padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(contact.title, color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text("Private conversation", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+        }
         state.myContactLink?.let { link ->
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
