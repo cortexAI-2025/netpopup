@@ -23,7 +23,15 @@ class CrashReport(private val file: File) {
     }
 
     /** La trace du dernier plantage, ou null s'il n'y en a pas. */
-    fun pending(): String? = file.takeIf { it.exists() }?.readText()?.takeIf { it.isNotBlank() }
+    fun pending(): String? = try {
+        file.takeIf { it.isFile }?.bufferedReader()?.use { reader ->
+            val buffer = CharArray(32_768)
+            val count = reader.read(buffer)
+            if (count > 0) String(buffer, 0, count).takeIf { it.isNotBlank() } else null
+        }
+    } catch (_: java.io.IOException) {
+        null // A diagnostic must never prevent the application from starting.
+    }
 
     fun clear() {
         file.delete()

@@ -61,6 +61,7 @@ class MeshDatabaseInstrumentedTest {
     }
 
     @Test fun backupIsDisabled() {
+        database.sql // force la création de la clé avant de vérifier son emplacement
         assertEquals(0, context.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP)
         assertTrue(context.noBackupFilesDir.resolve("mesh_db.key").exists())
     }

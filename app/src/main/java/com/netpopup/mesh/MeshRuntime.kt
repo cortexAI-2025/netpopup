@@ -13,15 +13,18 @@ import com.netpopup.transport.nearby.NearbyTransport
 import com.netpopup.transport.nearby.gms.GmsNearbyApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import com.netpopup.dtn.runtime.RetryableResource
+import com.netpopup.diagnostics.CrashReport
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,23 +45,29 @@ class MeshRuntime @Inject constructor(
     private val settings: AppSettings,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+    private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val engineScope = CoroutineScope(SupervisorJob() + engineDispatcher)
 
-    private val engine: Deferred<MeshEngine> = engineScope.async {
-        val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
-        MeshEngine(
-            db = database.sql,
-            transports = listOf(nearby),
-            parentScope = engineScope,
-            config = EngineConfig(
-                displayName = { settings.snapshot.displayName },
-                messageLifetimeSeconds = { LifetimeChoices.toSeconds(settings.snapshot.lifetimeHours) },
-            ),
-        )
+    private val engine = RetryableResource {
+        withContext(engineDispatcher) {
+            val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
+            MeshEngine(
+                db = database.sql,
+                transports = listOf(nearby),
+                parentScope = engineScope,
+                config = EngineConfig(
+                    displayName = { settings.snapshot.displayName },
+                    messageLifetimeSeconds = { LifetimeChoices.toSeconds(settings.snapshot.lifetimeHours) },
+                ),
+            )
+        }
     }
 
+    /** Opens native storage and crypto before navigation creates any flow collectors. */
+    suspend fun prepare() { engine.get() }
+
     /** Interface de l'UI : n'ouvre la base qu'au premier usage et ne bloque jamais le fil principal. */
-    val repository: ChatRepository = DeferredChatRepository(engineScope.async { MeshChatRepository(engine.await()) })
+    val repository: ChatRepository = DeferredChatRepository { MeshChatRepository(engine.get()) }
 
     private val _status = MutableStateFlow(MeshStatus.STOPPED)
     val status: StateFlow<MeshStatus> = _status.asStateFlow()
@@ -70,11 +79,27 @@ class MeshRuntime @Inject constructor(
         if (started) return
         started = true
         engineScope.launch {
-            val e = engine.await()
-            statusJob?.cancel()
-            statusJob = launch { e.meshStatus.collect { _status.value = it } }
-            e.start()
+            try {
+                val e = engine.get()
+                if (!started) return@launch
+                statusJob?.cancel()
+                statusJob = launch { e.meshStatus.collect { _status.value = it } }
+                e.start()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                recordStartupFailure(e)
+            } catch (e: LinkageError) {
+                recordStartupFailure(e)
+            }
         }
+    }
+
+    private fun recordStartupFailure(error: Throwable) {
+        started = false
+        statusJob?.cancel()
+        _status.value = MeshStatus.STOPPED
+        CrashReport(File(context.filesDir, "last_crash.txt")).record(Thread.currentThread(), error)
     }
 
     fun stop() {
@@ -82,7 +107,7 @@ class MeshRuntime @Inject constructor(
         started = false
         engineScope.launch {
             statusJob?.cancel()
-            engine.await().stop()
+            engine.peek()?.stop()
             _status.value = MeshStatus.STOPPED
         }
     }

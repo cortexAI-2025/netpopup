@@ -1,21 +1,14 @@
 package com.netpopup.ui.screen.onboarding
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
-import com.netpopup.mesh.MeshPermissions
-import com.netpopup.mesh.MeshService
 import com.netpopup.settings.AppSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
-// @ApplicationContext : le contexte d'application vit autant que le processus, il ne peut pas fuir une activité.
-@Suppress("StaticFieldLeak")
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val settings: AppSettings,
-    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     val displayName: StateFlow<String> get() = nameFlow
@@ -31,12 +24,12 @@ class OnboardingViewModel @Inject constructor(
     }
 
     /**
-     * Termine l'onboarding (une seule fois) : enregistre le pseudo, démarre le service si les permissions sont là.
+     * Termine l'onboarding (une seule fois) : enregistre le pseudo. Le moteur démarre ensuite dans l’écran de préparation.
      * Refusées, l'app reste utilisable en lecture et les réglages permettent de les redemander.
      */
-    fun finish() {
+    fun finish(enableMesh: Boolean = true) {
         settings.setDisplayName(nameFlow.value)
+        settings.setMeshEnabled(enableMesh)
         settings.setOnboardingDone(true)
-        if (settings.snapshot.meshEnabled && MeshPermissions.missing(context).isEmpty()) MeshService.start(context)
     }
 }

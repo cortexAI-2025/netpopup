@@ -45,8 +45,13 @@ class MeshDatabase @Inject constructor(@ApplicationContext private val context: 
         } catch (e: Exception) {
             throw DatabaseKeyLostException("database cannot be opened with its key", e)
         }
-        db.rawQuery("PRAGMA secure_delete = ON").close() // les messages effacés ne laissent pas de trace
-        return SqlCipherDatabase(db).also { Schema.migrate(it) }
+        return try {
+            db.rawQuery("PRAGMA secure_delete = ON").use { it.moveToFirst() }
+            SqlCipherDatabase(db).also { Schema.migrate(it) }
+        } catch (e: Exception) {
+            db.close()
+            throw e
+        }
     }
 
     /** Efface la base et sa clé. Détruit l'identité de l'appareil : à n'appeler qu'avec l'accord de l'utilisateur. */

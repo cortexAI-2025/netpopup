@@ -56,6 +56,8 @@ class SettingsViewModel @Inject constructor(
     /** Le service ne démarre qu'avec les permissions : l'écran les demande avant d'appeler avec `true`. */
     fun setMeshEnabled(enabled: Boolean) {
         settings.setMeshEnabled(enabled)
-        if (enabled) MeshService.start(context) else MeshService.stop(context)
+        if (enabled) {
+            if (!MeshService.start(context)) settings.setMeshEnabled(false)
+        } else MeshService.stop(context)
     }
 }

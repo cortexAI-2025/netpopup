@@ -74,7 +74,7 @@ class MeshService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (MeshPermissions.missing(this).isNotEmpty()) {
+        if (!settings.snapshot.meshEnabled || MeshPermissions.missing(this).isNotEmpty()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -132,8 +132,16 @@ class MeshService : Service() {
         private const val CHANNEL_ID = "netpopup_mesh"
         private const val NOTIFICATION_ID = 1001
 
-        fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java))
+        fun start(context: Context): Boolean {
+            if (MeshPermissions.missing(context).isNotEmpty()) return false
+            return try {
+                ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java))
+                true
+            } catch (_: SecurityException) {
+                false // Permissions may be revoked between the check and Android starting the service.
+            } catch (_: IllegalStateException) {
+                false // Android may reject a foreground-service request after the activity stops.
+            }
         }
 
         fun stop(context: Context) {

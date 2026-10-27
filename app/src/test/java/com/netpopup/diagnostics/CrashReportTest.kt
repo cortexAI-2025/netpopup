@@ -31,6 +31,17 @@ class CrashReportTest {
         assertTrue(r.pending()!!.length < 5000)
     }
 
+    @Test fun `an invalid report path cannot crash startup`() {
+        val directory = tmp.newFolder("not-a-file")
+        assertNull(CrashReport(directory).pending())
+    }
+
+    @Test fun `reading a report is bounded`() {
+        val file = tmp.newFile("large-report")
+        file.writeText("x".repeat(100_000))
+        assertEquals(32_768, CrashReport(file).pending()!!.length)
+    }
+
     @Test fun `clear removes the report`() {
         val r = report()
         r.record(Thread.currentThread(), RuntimeException("a"))

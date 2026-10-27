@@ -10,12 +10,15 @@ import com.netpopup.diagnostics.CrashReportDialog
 import com.netpopup.mesh.MeshPermissions
 import com.netpopup.mesh.MessageNotifier
 import com.netpopup.settings.AppSettings
-import com.netpopup.ui.navigation.Screen
 import javax.inject.Inject
+import com.netpopup.mesh.MeshRuntime
 import com.netpopup.mesh.MeshService
 import com.netpopup.security.SecureWindow
 import com.netpopup.ui.navigation.NavGraph
 import com.netpopup.ui.theme.NetPopUpTheme
+import com.netpopup.ui.screen.onboarding.OnboardingScreen
+import com.netpopup.ui.screen.startup.StartupScreen
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +35,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settings: AppSettings
+    @Inject lateinit var runtime: MeshRuntime
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,19 +44,26 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         enableEdgeToEdge()
 
-        val onboarded = settings.snapshot.onboardingDone
         val crash = CrashReport(java.io.File(filesDir, "last_crash.txt"))
         // Un plantage en attente : ni service ni navigation (qui rouvrent la base) avant que la trace ait pu être copiée,
         // sinon un plantage de démarrage reproductible referme l'app avant qu'on la lise.
-        val reportPending = crash.pending() != null
-        // Après l'onboarding, les permissions ne sont plus demandées ici : les réglages s'en chargent.
-        if (!reportPending && onboarded && settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
 
         setContent {
             NetPopUpTheme {
                 var crashText by remember { mutableStateOf(crash.pending()) }
                 crashText?.let { text -> CrashReportDialog(text) { crash.clear(); crashText = null } }
-                if (crashText == null) NavGraph(startDestination = if (onboarded) Screen.LocalChat.route else Screen.Onboarding.route)
+                val currentSettings by settings.state.collectAsState()
+                var runtimeReady by remember { mutableStateOf(false) }
+                if (crashText == null) {
+                    when {
+                        !currentSettings.onboardingDone -> OnboardingScreen(onDone = {})
+                        !runtimeReady -> StartupScreen(prepare = runtime::prepare, onReady = {
+                            if (settings.snapshot.meshEnabled && MeshPermissions.missing(this).isEmpty()) MeshService.start(this)
+                            runtimeReady = true
+                        })
+                        else -> NavGraph()
+                    }
+                }
             }
         }
     }
