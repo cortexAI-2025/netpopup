@@ -38,7 +38,9 @@ A successful APK build alone does not establish that the device job passed.
 ```
 
 Download `netpopup-debug-apk` in the successful run's Artifacts section. Extract
-the ZIP; `SHA256SUMS.txt` contains the SHA-256 of the APK itself. Debug builds use
+the ZIP; the `.apk.sha256` file contains the SHA-256 of the APK itself.
+The default debug artifact contains only ARM64. Separate ARMv7 and x86_64 artifacts
+are available for other phones and emulators. No universal APK is generated. Debug builds use
 `com.netpopup.debug`. CI attempts to preserve the debug signing certificate via
 its cache; loss of the cache may require uninstalling an older test build.
 Release APK/AAB artifacts signed with a generated CI certificate are for tests;

@@ -85,6 +85,9 @@ jobs:
         run: gradle assembleDebug --no-daemon --max-workers=1
 
 
+      - name: Inspect debug APK packaging
+        run: python3 scripts/inspect_apks.py app/build/outputs/apk/debug | tee debug-apk-sizes.json
+
       # Permissions réellement présentes dans l'APK (manifeste fusionné, dépendances comprises).
       - name: "Merged manifest — permissions"
         shell: bash
@@ -173,20 +176,41 @@ jobs:
           {
             echo "### APK debug pour les essais terrain"
             ls -l app/build/outputs/apk/debug/*.apk | awk '{printf "- %s : %.1f Mo\n", $9, $5/1048576}'
-            echo "- SHA-256 : \`$(sha256sum app/build/outputs/apk/debug/*.apk | cut -d' ' -f1)\`"
+            sha256sum app/build/outputs/apk/debug/*.apk
             echo "- commit : \`${GITHUB_SHA}\`"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          (cd app/build/outputs/apk/debug && sha256sum *.apk > SHA256SUMS.txt)
+          (cd app/build/outputs/apk/debug && for apk in *.apk; do sha256sum "$apk" > "$apk.sha256"; done)
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: netpopup-debug-apk
           path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/debug/SHA256SUMS.txt
+            app/build/outputs/apk/debug/*arm64-v8a*.apk*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload ARMv7 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-debug-apk-armv7
+          path: app/build/outputs/apk/debug/*armeabi-v7a*.apk*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-debug-apk-x86_64
+          path: app/build/outputs/apk/debug/*x86_64*.apk*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload APK size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-size-reports
+          path: debug-apk-sizes.json
 
       # ── Keystore CI généré à la volée (pas de secrets nécessaires) ───────────
       - name: Generate CI keystore
@@ -211,6 +235,9 @@ jobs:
             "-Pandroid.injected.signing.key.alias=release" \
             "-Pandroid.injected.signing.key.password=ci_password"
 
+      - name: Inspect release APK packaging
+        run: python3 scripts/inspect_apks.py app/build/outputs/apk/release
+
       - name: Report APK sizes
         run: |
           {
@@ -222,7 +249,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: netpopup-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/*arm64-v8a*.apk
           if-no-files-found: warn
 
       # ── AAB (Play Store) ──────────────────────────────────────────────────────
