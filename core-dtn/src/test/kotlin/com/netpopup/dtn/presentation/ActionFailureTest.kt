@@ -22,7 +22,7 @@ class ActionFailureTest {
         val repo = object : ChatRepository by base {
             override suspend fun sendText(conversationId: ConversationId, body: String): ChatMessage =
                 throw IllegalStateException("storage failure")
-            override suspend fun markRead(conversationId: ConversationId) = throw IllegalStateException("read failure")
+            override suspend fun markRead(conversationId: ConversationId): Unit = throw IllegalStateException("read failure")
         }
         val presenter = ConversationPresenter(repo, LOCAL_CONVERSATION_ID, backgroundScope, flowOf(emptySet()), {})
         runCurrent()
@@ -36,7 +36,7 @@ class ActionFailureTest {
     @Test fun failedRoomActionIsShownWithoutCrashingTheRoomsScreen() = runTest {
         val base = InMemoryChatRepository()
         val repo = object : ChatRepository by base {
-            override suspend fun approveJoinRequest(requestId: String) = throw IllegalStateException("write failure")
+            override suspend fun approveJoinRequest(requestId: String): Unit = throw IllegalStateException("write failure")
         }
         val presenter = RoomsPresenter(repo, backgroundScope)
         runCurrent()
@@ -60,7 +60,7 @@ class ActionFailureTest {
     @Test fun cancellationIsNotDisplayedAsAnActionFailure() = runTest {
         val base = InMemoryChatRepository()
         val repo = object : ChatRepository by base {
-            override suspend fun approveJoinRequest(requestId: String) = throw CancellationException("screen closed")
+            override suspend fun approveJoinRequest(requestId: String): Unit = throw CancellationException("screen closed")
         }
         val presenter = RoomsPresenter(repo, backgroundScope)
         runCurrent()
