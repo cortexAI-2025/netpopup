@@ -1,6 +1,9 @@
 package com.netpopup.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -73,7 +76,13 @@ fun NetPopUpTopBar(
 
         // ── Centre : logo secondaire OU titre texte ───────────────────────────
         if (showBrandLogo) {
-            SecondaryLogo()
+            Column(Modifier.widthIn(max = 200.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                SecondaryLogo()
+                if (subtitle != null) Text(
+                    subtitle, color = TextSecondary, style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
         } else {
             androidx.compose.foundation.layout.Column(
                 horizontalAlignment = Alignment.CenterHorizontally

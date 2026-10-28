@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.netpopup.dtn.chat.ChatRepository
 import com.netpopup.dtn.chat.MeshInfo
 import com.netpopup.dtn.chat.MeshStatus
+import com.netpopup.mesh.MeshRuntime
+import com.netpopup.transport.nearby.NearbyDiagnostics
 import com.netpopup.mesh.MeshService
 import com.netpopup.settings.AppSettings
 import com.netpopup.settings.SettingsSnapshot
@@ -25,6 +27,7 @@ data class SettingsUiState(
     val info: MeshInfo = MeshInfo.EMPTY,
     val blocked: Set<String> = emptySet(),
     val fingerprint: String = "",
+    val nearby: NearbyDiagnostics = NearbyDiagnostics(),
 )
 
 // @ApplicationContext : le contexte d'application vit autant que le processus, il ne peut pas fuir une activité.
@@ -33,6 +36,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val repository: ChatRepository,
     private val settings: AppSettings,
+    private val runtime: MeshRuntime,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -45,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = combine(
         settings.state, repository.meshStatus, repository.observeMeshInfo(), repository.observeBlocked(), fingerprint,
     ) { s, status, info, blocked, fp -> SettingsUiState(s, status, info, blocked, fp) }
+        .combine(runtime.nearbyDiagnostics) { state, diagnostics -> state.copy(nearby = diagnostics) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState(settings.snapshot))
 
     fun setDisplayName(name: String) = settings.setDisplayName(name)
@@ -56,6 +61,8 @@ class SettingsViewModel @Inject constructor(
     /** Le service ne démarre qu'avec les permissions : l'écran les demande avant d'appeler avec `true`. */
     fun setMeshEnabled(enabled: Boolean) {
         settings.setMeshEnabled(enabled)
-        if (enabled) MeshService.start(context) else MeshService.stop(context)
+        if (enabled) {
+            if (!MeshService.start(context)) settings.setMeshEnabled(false)
+        } else MeshService.stop(context)
     }
 }

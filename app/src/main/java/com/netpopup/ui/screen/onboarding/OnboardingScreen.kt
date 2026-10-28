@@ -29,6 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -72,7 +75,7 @@ class OnboardingActions(
 fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltViewModel()) {
     val name by viewModel.displayName.collectAsState()
     val context = LocalContext.current
-    var denied by remember { mutableStateOf(false) }
+    var denied by rememberSaveable { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (MeshPermissions.missing(context).isEmpty()) { viewModel.finish(); onDone() } else denied = true
@@ -92,7 +95,7 @@ fun OnboardingScreen(onDone: () -> Unit, viewModel: OnboardingViewModel = hiltVi
             onOpenAndroidSettings = {
                 context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
             },
-            onContinueWithoutMesh = { viewModel.finish(); onDone() },
+            onContinueWithoutMesh = { viewModel.finish(enableMesh = false); onDone() },
         ),
     )
 }
@@ -105,10 +108,10 @@ fun OnboardingContent(
     actions: OnboardingActions,
     initialStep: Int = 0,
 ) {
-    var step by remember { mutableIntStateOf(initialStep) }
+    var step by rememberSaveable { mutableIntStateOf(initialStep) }
 
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().padding(24.dp).verticalScroll(rememberScrollState()),
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("NetPopUp", color = Primary, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -155,6 +158,7 @@ fun OnboardingContent(
                         Text("Continue without the mesh", color = MaterialTheme.colorScheme.onPrimary)
                     }
                 } else {
+                    TextButton(onClick = actions.onContinueWithoutMesh) { Text("Continue without the mesh") }
                     Button(onClick = actions.onAllow, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) {
                         Text("Allow and start", color = MaterialTheme.colorScheme.onPrimary)
                     }

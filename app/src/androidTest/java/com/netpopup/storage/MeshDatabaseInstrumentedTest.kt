@@ -35,7 +35,8 @@ class MeshDatabaseInstrumentedTest {
         database.blockList.block("empreinte-secrete", 1)
         database.sql.close()
         val file = context.getDatabasePath(MeshDatabase.FILE_NAME)
-        val header = file.inputStream().use { it.readNBytes(16) }
+        val header = ByteArray(16)
+        file.inputStream().use { java.io.DataInputStream(it).readFully(header) }
         assertFalse("en-tête SQLite en clair", String(header, Charsets.ISO_8859_1).startsWith("SQLite format 3"))
         assertFalse("contenu en clair", file.readBytes().toString(Charsets.ISO_8859_1).contains("empreinte-secrete"))
         assertThrows(SQLiteException::class.java) {
@@ -61,6 +62,7 @@ class MeshDatabaseInstrumentedTest {
     }
 
     @Test fun backupIsDisabled() {
+        database.sql // force la création de la clé avant de vérifier son emplacement
         assertEquals(0, context.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP)
         assertTrue(context.noBackupFilesDir.resolve("mesh_db.key").exists())
     }

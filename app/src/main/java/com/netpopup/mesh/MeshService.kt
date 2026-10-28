@@ -21,6 +21,7 @@ import com.netpopup.settings.AppSettings
 import kotlinx.coroutines.flow.first
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +75,7 @@ class MeshService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (MeshPermissions.missing(this).isNotEmpty()) {
+        if (!settings.snapshot.meshEnabled || MeshPermissions.missing(this).isNotEmpty()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -88,12 +89,21 @@ class MeshService : Service() {
         }
         notifyJob?.cancel()
         notifyJob = scope.launch {
-            val repository = runtime.repository
-            repository.observeIncoming().collect { message ->
-                val blocked = repository.observeBlocked().first()
-                if (NotificationPolicy.shouldNotify(message, settings.snapshot.notificationsEnabled, blocked, ActiveConversation.current.value)) {
-                    notifier.show()
+            try {
+                runtime.prepare() // Also gates sticky restarts when no Activity is present.
+                val repository = runtime.repository
+                repository.observeIncoming().collect { message ->
+                    val blocked = repository.observeBlocked().first()
+                    if (NotificationPolicy.shouldNotify(message, settings.snapshot.notificationsEnabled, blocked, ActiveConversation.current.value)) {
+                        notifier.show()
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                stopSelf()
+            } catch (e: LinkageError) {
+                stopSelf()
             }
         }
         return START_STICKY
@@ -132,8 +142,16 @@ class MeshService : Service() {
         private const val CHANNEL_ID = "netpopup_mesh"
         private const val NOTIFICATION_ID = 1001
 
-        fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java))
+        fun start(context: Context): Boolean {
+            if (MeshPermissions.missing(context).isNotEmpty()) return false
+            return try {
+                ContextCompat.startForegroundService(context, Intent(context, MeshService::class.java))
+                true
+            } catch (_: SecurityException) {
+                false // Permissions may be revoked between the check and Android starting the service.
+            } catch (_: IllegalStateException) {
+                false // Android may reject a foreground-service request after the activity stops.
+            }
         }
 
         fun stop(context: Context) {

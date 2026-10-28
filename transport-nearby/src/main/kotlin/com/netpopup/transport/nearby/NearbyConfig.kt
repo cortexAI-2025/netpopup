@@ -18,12 +18,19 @@ data class NearbyConfig(
     val idleDuration: Duration = 40.seconds,
 
     /** Connexions simultanées au plus (architecture mesh v0.2 : 3 à 4). */
-    val maxConnections: Int = 4
+    val maxConnections: Int = 4,
+
+    /** Continuous discovery avoids permanently disjoint 20s/40s windows on separate phones. */
+    val continuous: Boolean = false,
+
+    /** A missing callback must not occupy a connection slot forever. */
+    val connectionTimeout: Duration = 15.seconds,
 ) {
     init {
         require(serviceId.isNotBlank()) { "serviceId must not be blank" }
         require(activeDuration > Duration.ZERO) { "activeDuration must be > 0" }
         require(!idleDuration.isNegative()) { "idleDuration must be >= 0" }
+        require(connectionTimeout > Duration.ZERO) { "connectionTimeout must be > 0" }
         require(maxConnections in 1..8) { "maxConnections must be in 1..8" }
     }
 

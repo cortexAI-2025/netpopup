@@ -84,10 +84,11 @@ class DatabaseKeyStore(context: Context) {
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         try {
             generator.init(spec(strongBox = true))
+            return generator.generateKey()
         } catch (e: StrongBoxUnavailableException) {
             generator.init(spec(strongBox = false))
+            return generator.generateKey()
         }
-        return generator.generateKey()
     }
 
     private companion object {

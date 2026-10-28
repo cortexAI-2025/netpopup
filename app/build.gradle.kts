@@ -15,11 +15,21 @@ android {
         applicationId   = "com.netpopup"
         minSdk          = 29
         targetSdk       = 34
-        versionCode     = 1
-        versionName     = "1.0.0"
+        versionCode     = 5
+        versionName     = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Standalone APK per CPU; do not make phone users download emulator/other-phone natives.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     // ── Signing ───────────────────────────────────────────────────────────────
@@ -78,7 +88,11 @@ android {
     }
 
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // libsignal's Java resources also contain desktop binaries. Android uses lib/<abi>/*.so.
+            excludes += setOf("**/*.dylib", "**/*.dll")
+        }
         // Variante de test de libsignal (~65 Mo par ABI) : inutile dans l'application livrée
         jniLibs { excludes += "**/libsignal_jni_testing.so" }
     }
@@ -135,6 +149,5 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

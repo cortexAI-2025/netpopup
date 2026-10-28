@@ -80,7 +80,7 @@ class PairwiseSession(private val store: SignalProtocolStore) {
         fun pairKeys(local: IdentityKeyPair, remote: IdentityKey): ChannelKeys {
             val secret = local.privateKey.calculateAgreement(remote.publicKey)
             val ids = listOf(local.publicKey.serialize(), remote.serialize())
-                .sortedWith { a, b -> java.util.Arrays.compareUnsigned(a, b) }
+                .sortedWith(UnsignedBytes)
             val scope = "pair/" + ids.joinToString("/") { it.joinToString("") { b -> "%02x".format(b) } }
             return ChannelKeys.derive(secret, scope)
         }

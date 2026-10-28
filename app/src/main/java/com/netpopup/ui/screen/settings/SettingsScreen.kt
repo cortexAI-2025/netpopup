@@ -129,6 +129,23 @@ fun SettingsContent(state: SettingsUiState, permissionsMissing: Boolean, onBack:
                     color = TextSecondary, style = MaterialTheme.typography.bodySmall
                 )
             }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Advertising: ${if (state.nearby.advertising) "on" else "off"} · Discovery: ${if (state.nearby.discovering) "on" else "off"}",
+                        color = TextSecondary, style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "Found: ${state.nearby.discovered} · Connecting: ${state.nearby.connecting} · Radio links: ${state.nearby.connected}",
+                        color = TextSecondary, style = MaterialTheme.typography.bodySmall,
+                    )
+                    state.nearby.lastFailure?.let { Text(it, color = Error, style = MaterialTheme.typography.bodySmall) }
+                    Text(
+                        "Keep Bluetooth and Wi-Fi enabled. On Android 10/11/12, also enable Location in Android settings. For a first test, keep both apps open nearby.",
+                        color = TextSecondary, style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             if (permissionsMissing) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

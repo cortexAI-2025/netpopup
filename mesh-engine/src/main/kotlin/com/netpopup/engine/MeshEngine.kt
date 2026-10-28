@@ -792,7 +792,7 @@ class MeshEngine(
             RoomMember(senderKeyOf(it), if (it == identity.publicKey) config.displayName() else contacts.find(it)?.name ?: "Member ${senderKeyOf(it).take(6)}", it == identity.publicKey)
         }
         val digest = MessageDigest.getInstance("SHA-256")
-        room.members.map { it.serialize() }.sortedWith { a, b -> java.util.Arrays.compareUnsigned(a, b) }.forEach(digest::update)
+        room.members.map { it.serialize() }.sortedWith(com.netpopup.crypto.UnsignedBytes).forEach(digest::update)
         val fingerprint = digest.digest().take(20).joinToString("") { "%02x".format(it) }.chunked(4).joinToString(" ")
         return RoomDetails(members, fingerprint, room.rotationInProgress)
     }

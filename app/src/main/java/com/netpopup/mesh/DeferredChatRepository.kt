@@ -11,15 +11,14 @@ import com.netpopup.dtn.chat.MessageId
 import com.netpopup.dtn.chat.PendingJoin
 import com.netpopup.dtn.chat.RoomDetails
 import com.netpopup.dtn.chat.RoomInvite
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 
-/** [ChatRepository] dont le moteur réel n'est prêt qu'après ouverture de la base : tout attend [delegate]. */
-class DeferredChatRepository(private val delegate: Deferred<ChatRepository>) : ChatRepository {
+/** [ChatRepository] dont le moteur réel n'est prêt qu'après ouverture de la base : tout attend the lazy delegate. */
+class DeferredChatRepository(private val delegate: suspend () -> ChatRepository) : ChatRepository {
 
-    private fun <T> flowOf(block: (ChatRepository) -> Flow<T>): Flow<T> = flow { emitAll(block(delegate.await())) }
+    private fun <T> flowOf(block: (ChatRepository) -> Flow<T>): Flow<T> = flow { emitAll(block(delegate())) }
 
     override val meshStatus: Flow<MeshStatus> = flowOf { it.meshStatus }
 
@@ -29,43 +28,43 @@ class DeferredChatRepository(private val delegate: Deferred<ChatRepository>) : C
         flowOf { it.observeMessages(conversationId) }
 
     override suspend fun sendText(conversationId: ConversationId, body: String): ChatMessage =
-        delegate.await().sendText(conversationId, body)
+        delegate().sendText(conversationId, body)
 
-    override suspend fun markRead(conversationId: ConversationId) = delegate.await().markRead(conversationId)
+    override suspend fun markRead(conversationId: ConversationId) = delegate().markRead(conversationId)
 
-    override suspend fun deleteLocally(messageId: MessageId) = delegate.await().deleteLocally(messageId)
+    override suspend fun deleteLocally(messageId: MessageId) = delegate().deleteLocally(messageId)
 
     override suspend fun createRoom(title: String, admission: AdmissionPolicy): RoomInvite =
-        delegate.await().createRoom(title, admission)
+        delegate().createRoom(title, admission)
 
-    override suspend fun requestToJoin(inviteLink: String): PendingJoin = delegate.await().requestToJoin(inviteLink)
+    override suspend fun requestToJoin(inviteLink: String): PendingJoin = delegate().requestToJoin(inviteLink)
 
-    override suspend fun addContact(contactLink: String): ConversationId = delegate.await().addContact(contactLink)
+    override suspend fun addContact(contactLink: String): ConversationId = delegate().addContact(contactLink)
 
-    override suspend fun myContactLink(): String = delegate.await().myContactLink()
+    override suspend fun myContactLink(): String = delegate().myContactLink()
 
     override fun observePendingJoins(): Flow<List<PendingJoin>> = flowOf { it.observePendingJoins() }
 
     override fun observeJoinRequests(): Flow<List<JoinRequest>> = flowOf { it.observeJoinRequests() }
 
-    override suspend fun approveJoinRequest(requestId: String) = delegate.await().approveJoinRequest(requestId)
+    override suspend fun approveJoinRequest(requestId: String) = delegate().approveJoinRequest(requestId)
 
-    override suspend fun rejectJoinRequest(requestId: String) = delegate.await().rejectJoinRequest(requestId)
+    override suspend fun rejectJoinRequest(requestId: String) = delegate().rejectJoinRequest(requestId)
 
     override fun observeRoomDetails(conversationId: ConversationId): Flow<RoomDetails?> =
         flowOf { it.observeRoomDetails(conversationId) }
 
-    override suspend fun leave(conversationId: ConversationId) = delegate.await().leave(conversationId)
+    override suspend fun leave(conversationId: ConversationId) = delegate().leave(conversationId)
 
     override fun observeBlocked(): Flow<Set<String>> = flowOf { it.observeBlocked() }
 
-    override suspend fun block(senderKey: String) = delegate.await().block(senderKey)
+    override suspend fun block(senderKey: String) = delegate().block(senderKey)
 
-    override suspend fun unblock(senderKey: String) = delegate.await().unblock(senderKey)
+    override suspend fun unblock(senderKey: String) = delegate().unblock(senderKey)
 
     override fun observeIncoming(): Flow<ChatMessage> = flowOf { it.observeIncoming() }
 
     override fun observeMeshInfo(): Flow<com.netpopup.dtn.chat.MeshInfo> = flowOf { it.observeMeshInfo() }
 
-    override suspend fun myFingerprint(): String = delegate.await().myFingerprint()
+    override suspend fun myFingerprint(): String = delegate().myFingerprint()
 }

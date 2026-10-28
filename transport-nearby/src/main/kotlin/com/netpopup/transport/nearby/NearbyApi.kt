@@ -38,6 +38,7 @@ interface NearbyListener {
     fun onConnectionInitiated(endpointId: String, remoteName: String, isIncoming: Boolean)
 
     fun onConnectionResult(endpointId: String, success: Boolean)
+    fun onConnectionFailure(endpointId: String, statusCode: Int) = Unit
     fun onDisconnected(endpointId: String)
 
     /** Charge utile de type `BYTES` seulement ; fichiers et flux sont ignorés par l'implémentation. */
@@ -46,3 +47,6 @@ interface NearbyListener {
 
 /** Permission refusée ou manquante : inutile de réessayer tant que l'utilisateur ne l'a pas accordée. */
 class NearbyPermissionException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Nearby SDK status preserved without logging peer names or message contents. */
+class NearbyApiException(val statusCode: Int, cause: Throwable) : Exception("Nearby status $statusCode", cause)

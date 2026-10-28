@@ -1,215 +1,72 @@
-# NetPopUp — Android MVP
+# NetPopUp — Android mesh messaging
 
-> Ultra-fast, anonymous, text-only messaging. Local geo rooms + private invite rooms.
+NetPopUp exchanges ephemeral text messages between nearby Android phones using
+Nearby Connections and store-carry-and-forward routing. The current application
+works without a Firebase project or an Internet relay.
 
-> **Pivot en cours : réseau mesh DTN offline-first.** NetPopUp devient une
-> messagerie de téléphone à téléphone (Nearby Connections, store-carry-and-forward,
-> chiffrement de bout en bout via libsignal) qui fonctionne sans GSM, sans Wi-Fi
-> et sans Firebase. La référence est le document « NetPopUp — Architecture mesh
-> v0.1 ». Le code Firebase décrit plus bas est l'ancien MVP : il sera retiré ou
-> déplacé vers un transport Internet optionnel après le premier test terrain.
+- Public local room, private rooms with admission requests, direct contacts.
+- Local cryptographic identity, libsignal private conversations, encrypted SQLCipher storage.
+- Local blocking, message expiry, delivery acknowledgements, discreet notifications.
+- Android 10+ (`minSdk 29`), Kotlin, Compose, Hilt, coroutines.
 
-## Modules (mesh v0)
+The local room is public. A message waiting for a peer is not a delivered message.
+Nearby radio range and actual background delivery still require tests on two phones.
 
-| Module | Rôle |
-|---|---|
-| `:core-dtn` | Kotlin pur : `ChatRepository`, enveloppe, store, routage épidémique |
-| `:core-crypto` | Kotlin pur : identité, X3DH, Double Ratchet, Sender Keys (libsignal) |
-| `:transport-nearby` | Android : transport Nearby Connections (`P2P_CLUSTER`) |
-| `:app` | UI Compose, ViewModels — `minSdk` 29 (Android 10) |
+## Build
+
+Use Java 17, Gradle 8.6 and Android SDK 34:
 
 ```bash
-./gradlew :core-dtn:test   # tests JVM du cœur, sans émulateur
-```
-
----
-
-## Architecture
-
-```
-com.netpopup/
-├── data/
-│   ├── model/          ← Plain data classes (User, Message, Room)
-│   ├── local/          ← DataStore (UserPreferences)
-│   └── repository/     ← Firebase data sources (Auth, Messages, Rooms)
-├── di/                 ← Hilt modules
-├── service/            ← FCM push notification handler
-├── ui/
-│   ├── theme/          ← Dark color scheme, typography
-│   ├── navigation/     ← NavGraph (3 destinations)
-│   ├── screen/
-│   │   ├── local/      ← Geo chatroom screen + ViewModel
-│   │   ├── private/    ← Private room chat screen + ViewModel
-│   │   └── rooms/      ← Create / Join room screen + ViewModel
-│   └── component/      ← Reusable Compose components
-└── util/               ← GeoUtils, UsernameGenerator, ModerationUtils
-```
-
-**Tech stack:** Kotlin · Jetpack Compose · MVVM · Hilt · Firebase (Auth + Firestore + FCM) · DataStore · Coroutines/Flow
-
----
-
-## Firebase Setup (required before building)
-
-### 1. Create a Firebase project
-
-1. Go to [firebase.google.com](https://firebase.google.com) → **Add project**
-2. Name it `netpopup` (or anything you prefer)
-
-### 2. Add an Android app
-
-- Package name: **`com.netpopup`**
-- Download **`google-services.json`**
-- Place it at: `app/google-services.json`
-
-### 3. Enable services
-
-| Service | Where |
-|---|---|
-| Anonymous Authentication | Firebase Console → Authentication → Sign-in method → Anonymous → Enable |
-| Firestore Database | Firebase Console → Firestore → Create database (production mode) |
-| Cloud Messaging | Enabled automatically for Android apps |
-
-### 4. Deploy Firestore rules & indexes
-
-```bash
-# Install Firebase CLI if needed
-npm install -g firebase-tools
-firebase login
-
-# Deploy security rules
-firebase deploy --only firestore:rules
-
-# Deploy compound index (required for message queries)
-firebase deploy --only firestore:indexes
-```
-
-### 5. Enable Firestore TTL (ephemeral messages)
-
-In the Firebase Console → Firestore → **TTL policies** → Add TTL policy:
-- Collection: `messages`
-- Field: `expiresAt`
-
-This auto-deletes expired messages server-side at no extra cost.
-
----
-
-## Build & Run
-
-```bash
-# Clone
-git clone https://github.com/cortexai-2025/netpopup.git
-cd netpopup
-
-# Add your google-services.json (see above)
-cp /path/to/google-services.json app/google-services.json
-
-# Build debug APK
 ./gradlew assembleDebug
-
-# Install on connected device
-./gradlew installDebug
+./gradlew :core-dtn:test :core-crypto:test :store-sql:test :mesh-engine:test
+./gradlew :app:testDebugUnitTest :transport-nearby:testDebugUnitTest
+./gradlew :app:lintDebug :transport-nearby:lintDebug
 ```
 
----
+No `google-services.json` is required. The archived Firebase prototype is in
+[`legacy-firebase/`](legacy-firebase/README.md), outside the application sources.
 
-## Features
+## Android verification
 
-### Authentication
-- Fully anonymous — no email, no phone required
-- Auto-generated username (e.g. `Wolf_4821`)
-- Session persisted via DataStore across app restarts
+The CI builds debug APKs and runs JVM tests, lint and an Android 10/11/15 emulator matrix.
+The device jobs exercise fresh cryptographic identity creation and real onboarding, the name-to-permissions transition,
+activity recreation, offline message storage and native encrypted database tests.
+A successful APK build alone does not establish that the device job passed.
 
-### Local Chatroom (Geo-based)
-- Coarse location permission used once to compute a **zone ID**
-- Zone = `round(lat, 2)` × `round(lng, 2)` ≈ 1.1 km × 1.1 km grid cell
-- All users in the same cell share one Firestore room
-- No precise GPS stored anywhere
-
-### Private Rooms
-- Generate a 6-character alphanumeric invite code
-- Join any room by entering its code
-- Copy code to clipboard with one tap
-
-### Messaging
-- Text only (500 char limit, enforced client + Firestore rules)
-- Rate limit: 1 message / second (client-side)
-- Ephemeral: messages expire after 1 hour (configurable via `Message.TTL_MS`)
-
-### Moderation
-- Long-press any message → **Report** or **Block user**
-- Blocked users filtered locally (DataStore)
-- Reported messages flagged in Firestore for admin review
-- Basic banned-word filter (`ModerationUtils`)
-
-### Push Notifications
-- FCM delivers new message notifications when the app is in the background
-- Notification channel: `netpopup_messages` (high importance)
-
----
-
-## Geo Zone Logic
-
-```kotlin
-// GeoUtils.kt
-fun computeZoneId(lat: Double, lng: Double): String {
-    val roundedLat = (lat * 100).roundToInt() / 100.0  // 48.8566 → 48.86
-    val roundedLng = (lng * 100).roundToInt() / 100.0  // 2.3522  → 2.35
-    // Encode: "." → "p", "-" → "n"
-    return "zone_48p86_2p35"
-}
+```bash
+./gradlew :app:connectedDebugAndroidTest
 ```
 
-Each zone cell is ~1.1 km wide — large enough for a neighbourhood, small enough to be local.
+Download `netpopup-debug-apk` in the successful run's Artifacts section. Extract
+the ZIP; the `.apk.sha256` file contains the SHA-256 of the APK itself.
+The default debug artifact contains only ARM64. Separate ARMv7 and x86_64 artifacts
+are available for other phones and emulators. No universal APK is generated. Debug builds use
+`com.netpopup.debug`. CI attempts to preserve the debug signing certificate via
+its cache; loss of the cache may require uninstalling an older test build.
+Release APK/AAB artifacts signed with a generated CI certificate are for tests;
+they are not a production signing identity.
 
----
+## Startup recovery
 
-## Firestore Data Model
+Storage and crypto initialize before chat screens collect data. A failed startup
+shows **Retry** and **Copy diagnostic** without deleting the database or identity.
+The offline onboarding option keeps the mesh service disabled until re-enabled
+in Settings. Previously uncaught crashes can still be copied on next launch.
 
-```
-/rooms/{roomId}
-  id        : String
-  type      : "LOCAL" | "PRIVATE"
-  zoneId    : String   (local rooms)
-  code      : String   (private rooms)
-  createdAt : Long (epoch ms)
+## Modules
 
-/messages/{messageId}
-  id        : String
-  roomId    : String
-  userId    : String
-  username  : String
-  content   : String  (≤500 chars)
-  timestamp : Long (epoch ms)
-  expiresAt : Long (epoch ms)  ← TTL field
-  reported  : Boolean
-```
-
----
-
-## Performance Notes
-
-- Firestore offline persistence enabled → messages appear instantly from cache
-- Snapshot listeners (not polling) → sub-300ms real-time delivery
-- Messages limited to last 100 per room per query
-- LazyColumn with `key = { it.id }` → efficient list diffing
-
----
-
-## Extending for Production
-
-| Feature | Where to add |
+| Module | Role |
 |---|---|
-| Server-side rate limiting | Firebase Cloud Functions (trigger on `messages` create) |
-| Push to specific users | Store FCM token in `/users/{uid}` doc; target from Cloud Functions |
-| Admin kick/ban | Cloud Function + Firestore admin collection |
-| Manual zone switch | Expose `zoneId` param in `LocalChatViewModel.initialize()` |
-| Message search | Firestore `array-contains` on tokenised words (or Algolia) |
+| `app` | Compose UI, permissions, foreground service, native storage |
+| `core-dtn` | Chat contract, envelopes, routing, presenters |
+| `core-crypto` | Identity, pairwise crypto and private rooms |
+| `store-sql` | Persistent engine and protocol stores |
+| `mesh-engine` | Production mesh/chat integration |
+| `transport-nearby` | Nearby Connections transport |
 
----
+See [French user guide](docs/user-guide.fr.md), [field test protocol](docs/field-test-protocol.md),
+[threat model](docs/threat-model.md), and [validation status](docs/startup-validation.md).
 
-## Licence
+## License
 
-NetPopUp est distribué sous **GNU Affero General Public License v3.0** (voir
-[`LICENSE`](LICENSE)), licence imposée par libsignal. Toute redistribution,
-modifiée ou non, doit publier son code source sous la même licence.
+GNU Affero General Public License v3.0; see [LICENSE](LICENSE).

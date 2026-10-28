@@ -42,7 +42,9 @@ class LocalIdentity(val keyPair: IdentityKeyPair, val registrationId: Int) {
                 return LocalIdentity(IdentityKeyPair(stored), registration)
             }
             val pair = IdentityKeyPair.generate()
-            val id = random.nextInt(1, 16380) // plage de registrationId de libsignal
+            // The origin/bound overload comes from Java 17 and is absent on older Android.
+            // Keep SecureRandom and exactly the same inclusive 1..16379 range.
+            val id = random.nextInt(16379) + 1
             vault.save(pair.serialize(), id)
             return LocalIdentity(pair, id)
         }
