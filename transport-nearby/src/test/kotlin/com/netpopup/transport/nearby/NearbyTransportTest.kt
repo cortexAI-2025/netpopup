@@ -134,6 +134,18 @@ class NearbyTransportTest {
     }
 
     @Test
+    fun `one sided discovery eventually initiates even from the larger name`() = runTest {
+        val r = rig(NearbyConfig(continuous = true))
+        r.transport.start(); runCurrent()
+        r.api.listener!!.onEndpointFound("only-visible-here", lower); runCurrent()
+        assertEquals(0, r.api.count("request:"))
+        advanceTimeBy(3_000); runCurrent()
+        assertEquals(1, r.api.count("request:"))
+        r.api.connect("only-visible-here"); runCurrent()
+        assertEquals(listOf("only-visible-here"), r.connected())
+    }
+
+    @Test
     fun `silent handshake times out and retries a still discovered endpoint`() = runTest {
         val r = rig(NearbyConfig(continuous = true, maxConnections = 1))
         r.transport.start(); runCurrent()

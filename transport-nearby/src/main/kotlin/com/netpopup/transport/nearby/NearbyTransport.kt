@@ -213,29 +213,15 @@ class NearbyTransport(
     private val listener = object : NearbyListener {
 
         override fun onEndpointFound(endpointId: String, remoteName: String) {
-            val name = synchronized(lock) {
-                seen[endpointId] = remoteName
-                val canRequest = endpointId !in connected &&
-                    endpointId !in handshaking &&
-                    connected.size + handshaking.size < config.maxConnections &&
-                    localName.isNotEmpty() &&
-                    localName < remoteName
-                if (canRequest) handshaking += endpointId
-                if (canRequest) localName else null
-            }
+            synchronized(lock) { seen[endpointId] = remoteName }
             refreshCounts()
-            if (name == null) return
-            armTimeout(endpointId)
+            requestEndpoint(endpointId, remoteName, preferredOnly = true)
+            // Usually the smaller name initiates. If discovery is one-sided, the other
+            // phone must still be allowed to connect after giving the preferred side time.
             scope.launch {
-                try {
-                    api.requestConnection(name, endpointId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    freeHandshake(endpointId)
-                    reportFailure("Connection request", e)
-                    retryEndpoint(endpointId)
-                }
+                delay(3_000)
+                val stillVisible = synchronized(lock) { seen[endpointId] == remoteName && cycle?.isActive == true }
+                if (stillVisible) requestEndpoint(endpointId, remoteName, preferredOnly = false)
             }
         }
 
@@ -309,6 +295,29 @@ class NearbyTransport(
                 return
             }
             emit(TransportEvent.FrameReceived(handle(endpointId), bytes))
+        }
+    }
+
+    private fun requestEndpoint(endpointId: String, remoteName: String, preferredOnly: Boolean) {
+        val name = synchronized(lock) {
+            val canRequest = endpointId !in connected && endpointId !in handshaking &&
+                connected.size + handshaking.size < config.maxConnections &&
+                localName.isNotEmpty() && (!preferredOnly || localName < remoteName)
+            if (canRequest) handshaking += endpointId
+            if (canRequest) localName else null
+        } ?: return
+        refreshCounts()
+        armTimeout(endpointId)
+        scope.launch {
+            try {
+                api.requestConnection(name, endpointId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                freeHandshake(endpointId)
+                reportFailure("Connection request", e)
+                retryEndpoint(endpointId)
+            }
         }
     }
 

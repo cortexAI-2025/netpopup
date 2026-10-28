@@ -17,6 +17,10 @@ The opt-in duty-cycle transport configuration remains available for future use.
 Continuous radio discovery costs more battery than the former duty cycle; turn
 off Mesh service when relaying is not wanted.
 
+The lower anonymous name still gets first chance to initiate. After 3 seconds,
+a device may initiate from the other side too if no connection is pending: a
+one-sided discovery callback must not leave both phones waiting forever.
+
 Pending handshakes now expire after 15 seconds and retry a still-discovered
 endpoint after a 2-second delay. Late success callbacks cannot resurrect an
 expired request. Actual connection callbacks still determine connected state.
