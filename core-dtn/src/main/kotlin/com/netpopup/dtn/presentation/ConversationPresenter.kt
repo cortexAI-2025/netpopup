@@ -26,6 +26,7 @@ data class ConversationUiState(
     val messages: List<ChatMessage> = emptyList(),
     val blockedSenders: Set<String> = emptySet(),
     val peersInRange: Int = 0,
+    val meshRunning: Boolean = false,
     /** Membres, empreinte et rotation : room privée seulement. */
     val roomDetails: RoomDetails? = null,
     val error: String? = null
@@ -66,6 +67,7 @@ class ConversationPresenter(
                     messages = messages.filterNot { !it.isOwn && it.senderKey in blocked },
                     blockedSenders = blocked,
                     peersInRange = mesh.peersInRange,
+                    meshRunning = mesh.isRunning,
                     roomDetails = details,
                     error = if (conversation == null) CONVERSATION_NOT_FOUND else null,
                 )

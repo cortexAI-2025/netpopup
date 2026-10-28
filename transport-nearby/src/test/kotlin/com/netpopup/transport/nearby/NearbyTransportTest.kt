@@ -108,6 +108,62 @@ class NearbyTransportTest {
         assertEquals(SendResult.SENT, r.transport.send(peer("e1"), ByteArray(3)))
     }
 
+    @Test
+    fun `continuous discovery stays available when a second phone starts 30 seconds later`() = runTest {
+        val first = rig(NearbyConfig(continuous = true))
+        first.transport.start(); runCurrent()
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(0, first.api.count("stopDiscovery"))
+        assertEquals(0, first.api.count("stopAdvertising"))
+        assertTrue(first.transport.diagnostics.value.discovering)
+        assertTrue(first.transport.diagnostics.value.advertising)
+        val second = rig(NearbyConfig(continuous = true), seed = 2)
+        second.transport.start(); runCurrent()
+        val a = first.api.advertisedNames().single()
+        val b = second.api.advertisedNames().single()
+        first.api.listener!!.onEndpointFound("second", b)
+        second.api.listener!!.onEndpointFound("first", a)
+        runCurrent()
+        assertEquals(1, first.api.count("request:") + second.api.count("request:"))
+        first.api.connect("second"); second.api.connect("first"); runCurrent()
+        assertEquals(1, first.transport.diagnostics.value.connected)
+        assertEquals(1, second.transport.diagnostics.value.connected)
+        advanceTimeBy(180_000); runCurrent()
+        assertEquals(1, first.api.count("discover"))
+        assertEquals(1, second.api.count("discover"))
+    }
+
+    @Test
+    fun `silent handshake times out and retries a still discovered endpoint`() = runTest {
+        val r = rig(NearbyConfig(continuous = true, maxConnections = 1))
+        r.transport.start(); runCurrent()
+        r.api.listener!!.onEndpointFound("silent", higher); runCurrent()
+        assertEquals(1, r.transport.diagnostics.value.connecting)
+        advanceTimeBy(15_000); runCurrent()
+        assertEquals(0, r.transport.diagnostics.value.connecting)
+        assertTrue(r.api.calls.contains("disconnect:silent"))
+        r.api.listener!!.onConnectionResult("silent", true); runCurrent()
+        assertTrue("late success must not resurrect an expired handshake", r.connected().isEmpty())
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(2, r.api.count("request:"))
+    }
+
+    @Test
+    fun `continuous mode exposes SDK errors and retries discovery`() = runTest {
+        val r = rig(NearbyConfig(continuous = true))
+        r.api.discoveryFailure = NearbyApiException(8038, IllegalStateException("sdk"))
+        r.transport.start(); runCurrent()
+        assertTrue(r.transport.diagnostics.value.advertising)
+        assertFalse(r.transport.diagnostics.value.discovering)
+        assertEquals("Discovery: Nearby status 8038", r.transport.diagnostics.value.lastFailure)
+        r.api.discoveryFailure = null
+        advanceTimeBy(20_000); runCurrent()
+        assertTrue(r.transport.diagnostics.value.discovering)
+        assertEquals(null, r.transport.diagnostics.value.lastFailure)
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(2, r.api.count("discover"))
+    }
+
     // ── Qui demande la connexion ─────────────────────────────────────────────
 
     @Test

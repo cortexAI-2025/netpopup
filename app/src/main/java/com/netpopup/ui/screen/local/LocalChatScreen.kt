@@ -25,7 +25,11 @@ fun LocalChatScreen(
     viewModel: LocalChatViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
-    val nearby = if (state.peersInRange > 0) "${state.peersInRange} nearby" else "No one nearby"
+    val nearby = when {
+        state.peersInRange > 0 -> "${state.peersInRange} connected"
+        state.meshRunning -> "Searching nearby"
+        else -> "Mesh stopped — open Settings"
+    }
 
     ConversationView(
         conversationId = LOCAL_CONVERSATION_ID,

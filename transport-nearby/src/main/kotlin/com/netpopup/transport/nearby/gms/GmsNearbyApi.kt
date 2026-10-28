@@ -15,6 +15,7 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import com.netpopup.transport.nearby.NearbyApiException
 import com.netpopup.transport.nearby.NearbyApi
 import com.netpopup.transport.nearby.NearbyConfig
 import com.netpopup.transport.nearby.NearbyListener
@@ -46,6 +47,7 @@ class GmsNearbyApi(
         }
 
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
+            if (!result.status.isSuccess) listener?.onConnectionFailure(endpointId, result.status.statusCode)
             listener?.onConnectionResult(endpointId, result.status.isSuccess)
         }
 
@@ -121,7 +123,7 @@ class GmsNearbyApi(
         try {
             block()
         } catch (e: ApiException) {
-            if (e.statusCode !in okStatuses) throw e
+            if (e.statusCode !in okStatuses) throw NearbyApiException(e.statusCode, e)
         } catch (e: SecurityException) {
             throw NearbyPermissionException("Nearby permission missing", e)
         }

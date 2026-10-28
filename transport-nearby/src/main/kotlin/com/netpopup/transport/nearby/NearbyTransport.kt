@@ -13,6 +13,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,10 +74,15 @@ class NearbyTransport(
     private val _events = MutableSharedFlow<TransportEvent>(extraBufferCapacity = 256)
     override val events: Flow<TransportEvent> = _events.asSharedFlow()
 
+    private val _diagnostics = MutableStateFlow(NearbyDiagnostics())
+    val diagnostics: StateFlow<NearbyDiagnostics> = _diagnostics.asStateFlow()
+
     private val lock = Any()
     private var localName = ""
     private val connected = LinkedHashSet<String>()
     private val handshaking = HashSet<String>()
+    private val seen = LinkedHashMap<String, String>()
+    private val timeouts = HashMap<String, Job>()
     private var cycle: Job? = null
     private val dropped = AtomicInteger()
     private val cycleCount = AtomicInteger()
@@ -101,12 +108,16 @@ class NearbyTransport(
             val peers = connected.toList()
             connected.clear()
             handshaking.clear()
+            seen.clear()
+            timeouts.values.forEach { it.cancel() }
+            timeouts.clear()
             peers
         }
         quietly { api.stopAll() }
         api.setListener(null)
         gone.forEach { _events.tryEmit(TransportEvent.PeerLost(handle(it))) }
         _state.value = TransportState.IDLE
+        _diagnostics.value = NearbyDiagnostics()
     }
 
     override suspend fun send(peer: PeerHandle, frame: ByteArray): SendResult {
@@ -127,8 +138,11 @@ class NearbyTransport(
         synchronized(lock) {
             connected.remove(peer.value)
             handshaking.remove(peer.value)
+            timeouts.remove(peer.value)?.cancel()
         }
+        refreshCounts()
         quietly { api.disconnect(peer.value) }
+        retryEndpoint(peer.value)
     }
 
     // ── Cycles de diffusion ──────────────────────────────────────────────────
@@ -147,35 +161,47 @@ class NearbyTransport(
                     return
                 }
                 Phase.DEGRADED -> _state.value = TransportState.DEGRADED
-                Phase.OK -> _state.value = TransportState.RUNNING
+                Phase.OK -> {
+                    _state.value = TransportState.RUNNING
+                    // Stop/restart rotates names mid-handshake and fixed duty windows may never overlap.
+                    if (config.continuous) awaitCancellation()
+                }
             }
 
             delay(config.activeDuration)
             quietly { api.stopAdvertising() }
             quietly { api.stopDiscovery() }
-            if (config.idleDuration > kotlin.time.Duration.ZERO) delay(config.idleDuration)
+            _diagnostics.update { it.copy(advertising = false, discovering = false) }
+            if (!config.continuous && config.idleDuration > kotlin.time.Duration.ZERO) delay(config.idleDuration)
         }
     }
 
     private suspend fun startPhase(name: String): Phase {
         var failures = 0
-        val steps: List<suspend () -> Unit> = listOf(
-            { api.startAdvertising(name) },
-            { api.startDiscovery() }
+        val steps: List<Pair<String, suspend () -> Unit>> = listOf(
+            "Advertising" to suspend { api.startAdvertising(name) },
+            "Discovery" to suspend { api.startDiscovery() }
         )
-        for (step in steps) {
+        for ((operation, step) in steps) {
             try {
                 step()
+                _diagnostics.update {
+                    if (operation == "Advertising") it.copy(advertising = true) else it.copy(discovering = true)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NearbyPermissionException) {
+                reportFailure(operation, e)
                 quietly { api.stopAdvertising() }
                 quietly { api.stopDiscovery() }
+                _diagnostics.update { it.copy(advertising = false, discovering = false) }
                 return Phase.PERMISSION_DENIED
             } catch (e: Exception) {
+                reportFailure(operation, e)
                 failures++
             }
         }
+        if (failures == 0) _diagnostics.update { it.copy(lastFailure = null) }
         return if (failures == 0) Phase.OK else Phase.DEGRADED
     }
 
@@ -188,6 +214,7 @@ class NearbyTransport(
 
         override fun onEndpointFound(endpointId: String, remoteName: String) {
             val name = synchronized(lock) {
+                seen[endpointId] = remoteName
                 val canRequest = endpointId !in connected &&
                     endpointId !in handshaking &&
                     connected.size + handshaking.size < config.maxConnections &&
@@ -195,20 +222,27 @@ class NearbyTransport(
                     localName < remoteName
                 if (canRequest) handshaking += endpointId
                 if (canRequest) localName else null
-            } ?: return
-
+            }
+            refreshCounts()
+            if (name == null) return
+            armTimeout(endpointId)
             scope.launch {
                 try {
                     api.requestConnection(name, endpointId)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    synchronized(lock) { handshaking -= endpointId }
+                    freeHandshake(endpointId)
+                    reportFailure("Connection request", e)
+                    retryEndpoint(endpointId)
                 }
             }
         }
 
-        override fun onEndpointLost(endpointId: String) = Unit
+        override fun onEndpointLost(endpointId: String) {
+            synchronized(lock) { seen.remove(endpointId) }
+            refreshCounts()
+        }
 
         override fun onConnectionInitiated(endpointId: String, remoteName: String, isIncoming: Boolean) {
             val accept = synchronized(lock) {
@@ -222,31 +256,49 @@ class NearbyTransport(
                     else -> false
                 }
             }
+            refreshCounts()
+            if (accept) armTimeout(endpointId)
             scope.launch {
                 try {
                     if (accept) api.acceptConnection(endpointId) else api.rejectConnection(endpointId)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    synchronized(lock) { handshaking -= endpointId }
+                    freeHandshake(endpointId)
+                    reportFailure("Connection acceptance", e)
+                    retryEndpoint(endpointId)
                 }
             }
         }
 
+        override fun onConnectionFailure(endpointId: String, statusCode: Int) {
+            _diagnostics.update { it.copy(lastFailure = "Connection: Nearby status $statusCode") }
+        }
+
         override fun onConnectionResult(endpointId: String, success: Boolean) {
             val opened = synchronized(lock) {
-                handshaking -= endpointId
-                success && connected.add(endpointId)
+                timeouts.remove(endpointId)?.cancel()
+                val pending = handshaking.remove(endpointId)
+                success && pending && connected.add(endpointId)
             }
-            if (opened) emit(TransportEvent.PeerConnected(handle(endpointId)))
+            refreshCounts()
+            if (opened) {
+                _diagnostics.update { it.copy(lastFailure = null) }
+                emit(TransportEvent.PeerConnected(handle(endpointId)))
+            } else if (!success) retryEndpoint(endpointId)
         }
 
         override fun onDisconnected(endpointId: String) {
             val wasConnected = synchronized(lock) {
                 handshaking -= endpointId
+                timeouts.remove(endpointId)?.cancel()
                 connected.remove(endpointId)
             }
-            if (wasConnected) emit(TransportEvent.PeerLost(handle(endpointId)))
+            refreshCounts()
+            if (wasConnected) {
+                emit(TransportEvent.PeerLost(handle(endpointId)))
+                retryEndpoint(endpointId)
+            }
         }
 
         override fun onPayload(endpointId: String, bytes: ByteArray) {
@@ -257,6 +309,50 @@ class NearbyTransport(
                 return
             }
             emit(TransportEvent.FrameReceived(handle(endpointId), bytes))
+        }
+    }
+
+    private fun refreshCounts() {
+        synchronized(lock) {
+            _diagnostics.update { it.copy(discovered = seen.size, connecting = handshaking.size, connected = connected.size) }
+        }
+    }
+
+    private fun reportFailure(operation: String, error: Exception) {
+        val reason = if (error is NearbyApiException) "Nearby status ${error.statusCode}" else error.javaClass.simpleName
+        _diagnostics.update { it.copy(lastFailure = "$operation: $reason") }
+    }
+
+    private fun freeHandshake(endpointId: String) {
+        synchronized(lock) {
+            handshaking.remove(endpointId)
+            timeouts.remove(endpointId)?.cancel()
+        }
+        refreshCounts()
+    }
+
+    private fun armTimeout(endpointId: String) {
+        val job = scope.launch {
+            delay(config.connectionTimeout)
+            val expired = synchronized(lock) {
+                timeouts.remove(endpointId)
+                handshaking.remove(endpointId)
+            }
+            if (expired) {
+                _diagnostics.update { it.copy(lastFailure = "Connection timed out; discovery is still running") }
+                refreshCounts()
+                quietly { api.disconnect(endpointId) }
+                retryEndpoint(endpointId)
+            }
+        }
+        synchronized(lock) { timeouts.put(endpointId, job)?.cancel() }
+    }
+
+    private fun retryEndpoint(endpointId: String) {
+        scope.launch {
+            delay(2_000)
+            val remote = synchronized(lock) { if (cycle?.isActive == true) seen[endpointId] else null }
+            if (remote != null) listener.onEndpointFound(endpointId, remote)
         }
     }
 

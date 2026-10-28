@@ -43,6 +43,16 @@ class SettingsContentTest {
         compose.onNodeWithText("ABCD 1234").performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun nearbyDiagnosticsShowActualScanCountsAndSdkFailure() {
+        show(SettingsUiState(base, nearby = com.netpopup.transport.nearby.NearbyDiagnostics(
+            advertising = true, discovering = false, discovered = 2, connecting = 1,
+            lastFailure = "Discovery: Nearby status 8038",
+        )))
+        compose.onNodeWithText("Advertising: on · Discovery: off").assertIsDisplayed()
+        compose.onNodeWithText("Found: 2 · Connecting: 1 · Radio links: 0").assertIsDisplayed()
+        compose.onNodeWithText("Discovery: Nearby status 8038").assertIsDisplayed()
+    }
+
     @Test fun stoppedMeshExplainsTheEffectOfTheSwitch() {
         show(SettingsUiState(base.copy(meshEnabled = false)))
         compose.onNodeWithText("Off: no reception and no relaying", substring = true).assertIsDisplayed()

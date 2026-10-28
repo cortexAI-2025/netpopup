@@ -9,6 +9,8 @@ import com.netpopup.dtn.presentation.LifetimeChoices
 import com.netpopup.engine.MeshEngine
 import com.netpopup.settings.AppSettings
 import com.netpopup.storage.MeshDatabase
+import com.netpopup.transport.nearby.NearbyDiagnostics
+import com.netpopup.transport.nearby.NearbyConfig
 import com.netpopup.transport.nearby.NearbyTransport
 import com.netpopup.transport.nearby.gms.GmsNearbyApi
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -50,18 +52,24 @@ class MeshRuntime @Inject constructor(
 
     private val engine = RetryableResource {
         withContext(engineDispatcher) {
-            val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
+            val sql = database.sql
+            val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope, NearbyConfig(continuous = true))
             MeshEngine(
-                db = database.sql,
+                db = sql,
                 transports = listOf(nearby),
                 parentScope = engineScope,
                 config = EngineConfig(
                     displayName = { settings.snapshot.displayName },
                     messageLifetimeSeconds = { LifetimeChoices.toSeconds(settings.snapshot.lifetimeHours) },
                 ),
-            )
+            ).also {
+                engineScope.launch { nearby.diagnostics.collect { _nearbyDiagnostics.value = it } }
+            }
         }
     }
+
+    private val _nearbyDiagnostics = MutableStateFlow(NearbyDiagnostics())
+    val nearbyDiagnostics: StateFlow<NearbyDiagnostics> = _nearbyDiagnostics.asStateFlow()
 
     /** Opens native storage and crypto before navigation creates any flow collectors. */
     suspend fun prepare() { engine.get() }
