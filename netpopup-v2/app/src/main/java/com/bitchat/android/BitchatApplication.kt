@@ -1,9 +1,7 @@
 package com.bitchat.android
 
 import android.app.Application
-import com.bitchat.android.nostr.RelayDirectory
 import com.bitchat.android.ui.theme.ThemePreferenceManager
-import com.bitchat.android.net.ArtiTorManager
 
 /**
  * Main application class for bitchat Android
@@ -19,14 +17,8 @@ class BitchatApplication : Application() {
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 
-        // Initialize Tor first so any early network goes over Tor
-        try {
-            val torProvider = ArtiTorManager.getInstance()
-            torProvider.init(this)
-        } catch (_: Exception){}
-
-        // Initialize relay directory (loads assets/nostr_relays.csv)
-        RelayDirectory.initialize(this)
+        // NetPopUp V2 : aucun accès réseau. Tor, annuaire de relais Nostr et connexion aux relais ne sont pas démarrés
+        // (le code reste dans l'arbre, inactif, et la permission INTERNET est retirée du manifeste).
 
         // Initialize LocationNotesManager dependencies early so sheet subscriptions can start immediately
         try { com.bitchat.android.nostr.LocationNotesInitializer.initialize(this) } catch (_: Exception) { }
@@ -72,9 +64,6 @@ class BitchatApplication : Application() {
             com.bitchat.android.nostr.GeohashConversationRegistry.initialize(this)
         } catch (_: Exception) { }
 
-        // Own relay connectivity, selected-channel subscriptions, and presence scheduling at the
-        // process level so closing the Activity does not disconnect Nostr.
-        try { com.bitchat.android.nostr.NostrBackgroundRuntime.initialize(this) } catch (_: Exception) { }
 
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
