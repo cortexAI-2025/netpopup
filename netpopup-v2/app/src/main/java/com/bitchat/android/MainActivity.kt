@@ -330,7 +330,7 @@ class MainActivity : OrientationAwareActivity() {
 
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
-                ChatScreen(viewModel = chatViewModel)
+                com.netpopup.v2.ui.NetPopUpApp(viewModel = chatViewModel)
             }
             
             OnboardingState.ERROR -> {

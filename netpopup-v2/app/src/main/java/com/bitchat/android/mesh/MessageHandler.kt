@@ -484,6 +484,9 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                 Log.w(TAG, "FILE_TRANSFER decode failed (broadcast) from ${peerID.take(8)}")
             }
 
+            // NetPopUp V2 : enveloppe de salon chiffré. Jamais affichée dans le fil public, qu'on soit membre ou non.
+            if (com.netpopup.v2.rooms.RoomRepository.consume(peerID, packet.payload)) return
+
             // Fallback: plain text
             val message = BitchatMessage(
                 id = PacketIdUtil.computeIdHex(packet).uppercase(),

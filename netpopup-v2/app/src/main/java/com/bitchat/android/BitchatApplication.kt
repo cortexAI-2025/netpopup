@@ -13,6 +13,9 @@ class BitchatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // NetPopUp V2 : salons chiffrés (clés dans le Keystore)
+        try { com.netpopup.v2.rooms.RoomRepository.init(this) } catch (_: Exception) { }
+
         // Start the single process-wide power policy before transport components are constructed.
         com.bitchat.android.mesh.PowerManager.getInstance(this).start()
 

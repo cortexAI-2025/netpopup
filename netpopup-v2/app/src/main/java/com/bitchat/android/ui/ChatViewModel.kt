@@ -928,6 +928,11 @@ class ChatViewModel(
     
     // MARK: - Message Sending
     
+    /** NetPopUp V2 : diffuse sur le mesh un paquet de salon déjà chiffré (texte `NPR1:…`). */
+    fun broadcastRoomPacket(packet: String) {
+        mesh.sendMessage(packet, emptyList(), null)
+    }
+
     fun sendMessage(
         content: String,
         onAccepted: (Boolean) -> Unit = {}

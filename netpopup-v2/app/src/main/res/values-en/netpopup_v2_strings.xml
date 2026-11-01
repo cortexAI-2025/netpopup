@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nup_bluetooth_on">Bluetooth on</string>
+    <string name="nup_bluetooth_off">Bluetooth is off: turn it on to communicate</string>
+    <string name="nup_peers">Phones detected: %1$d</string>
+    <string name="nup_nickname">My nickname</string>
+    <string name="nup_rooms">Rooms</string>
+    <string name="nup_no_rooms">No room yet. Create one, or join a friend\'s room with its name and password.</string>
+    <string name="nup_create">Create a room</string>
+    <string name="nup_join">Join a room</string>
+    <string name="nup_room_name">Room name</string>
+    <string name="nup_room_password">Password</string>
+    <string name="nup_room_password_confirm">Confirm password</string>
+    <string name="nup_show_password">Show password</string>
+    <string name="nup_create_hint">Give the name and password in person: there is no account and no server. Choose a long password (8 characters minimum): it is what protects the room.</string>
+    <string name="nup_join_hint">Enter exactly the name and password the creator gave you. With a different password you will see nobody and nobody will see you.</string>
+    <string name="nup_err_name">Give the room a name.</string>
+    <string name="nup_err_short">Password too short (8 characters minimum).</string>
+    <string name="nup_err_mismatch">The two passwords differ.</string>
+    <string name="nup_err_empty_password">Enter the password.</string>
+    <string name="nup_err_failed">Could not create the room key.</string>
+    <string name="nup_working">Computing the key…</string>
+    <string name="nup_cancel">Cancel</string>
+    <string name="nup_do_create">Create</string>
+    <string name="nup_do_join">Join</string>
+    <string name="nup_back">Back</string>
+    <string name="nup_leave">Leave</string>
+    <string name="nup_leave_title">Leave this room?</string>
+    <string name="nup_leave_text">Its messages and key will be erased from this phone. To come back you will need to enter the name and password again.</string>
+    <string name="nup_message_hint">Message</string>
+    <string name="nup_send">Send</string>
+    <string name="nup_empty_room">No message yet. If your contacts are already writing, check the name and password: with a different password you cannot see each other.</string>
+    <string name="nup_connected">Connected: %1$d phone(s) nearby</string>
+    <string name="nup_alone">No phone nearby</string>
+    <string name="nup_me">me</string>
+    <string name="nup_unread">%1$d new</string>
+</resources>
