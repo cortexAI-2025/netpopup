@@ -125,6 +125,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Tables PQC « Picnic » de BouncyCastle (≈1,2 Mio compressés), jamais utilisées par NetPopUp
+            excludes += "org/bouncycastle/pqc/legacy/picnic/**"
         }
     }
     lint {
@@ -168,14 +170,10 @@ dependencies {
     // Permissions
     implementation(libs.accompanist.permissions)
 
-    // QR
+    // QR (génération seulement)
     implementation(libs.zxing.core)
-    implementation(libs.mlkit.barcode.scanning)
 
     // CameraX
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.compose)
     
     // Cryptography
     implementation(libs.bundles.cryptography)
