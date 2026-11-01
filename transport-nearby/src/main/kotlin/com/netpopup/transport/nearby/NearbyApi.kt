@@ -46,3 +46,6 @@ interface NearbyListener {
 
 /** Permission refusée ou manquante : inutile de réessayer tant que l'utilisateur ne l'a pas accordée. */
 class NearbyPermissionException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Nearby a refusé un appel : [message] porte le code d'état et son nom, pour l'écran de diagnostic. */
+class NearbyApiException(val statusCode: Int, message: String, cause: Throwable? = null) : Exception(message, cause)

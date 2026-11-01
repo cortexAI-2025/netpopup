@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
@@ -68,6 +69,11 @@ class NearbyTransport(
 
     private val _state = MutableStateFlow(TransportState.IDLE)
     override val state: StateFlow<TransportState> = _state.asStateFlow()
+
+    private val _diagnostics = MutableStateFlow(NearbyDiagnostics())
+
+    /** Ce que Nearby a répondu jusqu'ici : erreurs de démarrage et compteurs de rencontres. */
+    val diagnostics: StateFlow<NearbyDiagnostics> = _diagnostics.asStateFlow()
 
     private val _events = MutableSharedFlow<TransportEvent>(extraBufferCapacity = 256)
     override val events: Flow<TransportEvent> = _events.asSharedFlow()
@@ -138,6 +144,7 @@ class NearbyTransport(
             val name = newName()
             synchronized(lock) { localName = name }
             cycleCount.incrementAndGet()
+            _diagnostics.update { it.copy(cycles = cycles) }
 
             when (startPhase(name)) {
                 Phase.PERMISSION_DENIED -> {
@@ -159,25 +166,32 @@ class NearbyTransport(
 
     private suspend fun startPhase(name: String): Phase {
         var failures = 0
-        val steps: List<suspend () -> Unit> = listOf(
-            { api.startAdvertising(name) },
-            { api.startDiscovery() }
+        val steps = listOf(
+            Step("startAdvertising", { api.startAdvertising(name) }) { e -> _diagnostics.update { it.copy(advertisingError = e) } },
+            Step("startDiscovery", { api.startDiscovery() }) { e -> _diagnostics.update { it.copy(discoveryError = e) } },
         )
-        for (step in steps) {
+        for ((label, run, report) in steps) {
             try {
-                step()
+                run()
+                report(null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: NearbyPermissionException) {
+                report("$label: permission missing")
                 quietly { api.stopAdvertising() }
                 quietly { api.stopDiscovery() }
                 return Phase.PERMISSION_DENIED
             } catch (e: Exception) {
+                report("$label: ${describe(e)}")
                 failures++
             }
         }
         return if (failures == 0) Phase.OK else Phase.DEGRADED
     }
+
+    private data class Step(val label: String, val run: suspend () -> Unit, val report: (String?) -> Unit)
+
+    private fun describe(e: Exception): String = e.message?.take(120) ?: e.javaClass.simpleName
 
     private fun newName(): String =
         ByteArray(4).also(random::nextBytes).joinToString("") { "%02x".format(it) }
@@ -187,6 +201,7 @@ class NearbyTransport(
     private val listener = object : NearbyListener {
 
         override fun onEndpointFound(endpointId: String, remoteName: String) {
+            _diagnostics.update { it.copy(endpointsFound = it.endpointsFound + 1) }
             val name = synchronized(lock) {
                 val canRequest = endpointId !in connected &&
                     endpointId !in handshaking &&
@@ -197,6 +212,7 @@ class NearbyTransport(
                 if (canRequest) localName else null
             } ?: return
 
+            _diagnostics.update { it.copy(connectionRequests = it.connectionRequests + 1) }
             scope.launch {
                 try {
                     api.requestConnection(name, endpointId)
@@ -204,6 +220,7 @@ class NearbyTransport(
                     throw e
                 } catch (e: Exception) {
                     synchronized(lock) { handshaking -= endpointId }
+                    _diagnostics.update { it.copy(lastConnectionError = "requestConnection: ${describe(e)}") }
                 }
             }
         }
@@ -211,6 +228,7 @@ class NearbyTransport(
         override fun onEndpointLost(endpointId: String) = Unit
 
         override fun onConnectionInitiated(endpointId: String, remoteName: String, isIncoming: Boolean) {
+            if (isIncoming) _diagnostics.update { it.copy(connectionsProposed = it.connectionsProposed + 1) }
             val accept = synchronized(lock) {
                 when {
                     endpointId in connected -> false
@@ -238,6 +256,8 @@ class NearbyTransport(
                 handshaking -= endpointId
                 success && connected.add(endpointId)
             }
+            if (opened) _diagnostics.update { it.copy(connectionsOpened = it.connectionsOpened + 1) }
+            else if (!success) _diagnostics.update { it.copy(lastConnectionError = "connection result: failed") }
             if (opened) emit(TransportEvent.PeerConnected(handle(endpointId)))
         }
 

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.netpopup.dtn.chat.MeshInfo
 import com.netpopup.dtn.chat.MeshStatus
 import com.netpopup.settings.SettingsSnapshot
+import com.netpopup.transport.nearby.NearbyDiagnostics
 import com.netpopup.ui.screen.settings.SettingsActions
 import com.netpopup.ui.screen.settings.SettingsContent
 import com.netpopup.ui.screen.settings.SettingsUiState
@@ -59,6 +60,22 @@ class SettingsContentTest {
     @Test fun clockWarningAppearsOnlyWhenSuspected() {
         show(SettingsUiState(base, info = MeshInfo(0, clockSkewSuspected = true)))
         compose.onNodeWithText("Clock warning", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun nearbyDiagnosticsShowTheErrorAndTheCounters() {
+        show(SettingsUiState(base, nearby = NearbyDiagnostics(
+            cycles = 3, advertisingError = "startAdvertising: 8034 MISSING_PERMISSION_BLUETOOTH_ADVERTISE",
+            endpointsFound = 2, connectionRequests = 1, connectionsOpened = 0, lastConnectionError = "connection result: failed",
+        )))
+        compose.onNodeWithText("Advertising: startAdvertising: 8034", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Discovery: OK").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Phones seen: 2").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Last connection error: connection result: failed").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun nearbyDiagnosticsBeforeAnyCycleSaysNotStarted() {
+        show()
+        compose.onNodeWithText("Advertising: not started").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun noClockWarningByDefault() {
