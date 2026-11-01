@@ -4,19 +4,13 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Simple chat bubble icon for notifications -->
+    <!-- NetPopUp : trois nœuds reliés -->
+    <path
+        android:pathData="M12,6L7,17M12,6L17,17M7,17L17,17"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M4,4h16c1.1,0 2,0.9 2,2v10c0,1.1 -0.9,2 -2,2H6l-4,4V6C2,4.9 2.9,4 4,4z" />
-    <!-- Terminal cursor -->
-    <path
-        android:fillColor="@android:color/black"
-        android:pathData="M8,9h2v2h-2z" />
-    <!-- Message lines -->
-    <path
-        android:fillColor="@android:color/black"
-        android:pathData="M12,9h6v1h-6z" />
-    <path
-        android:fillColor="@android:color/black"
-        android:pathData="M12,11h4v1h-4z" />
+        android:pathData="M12,3m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0M6,18m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0M18,18m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
 </vector>

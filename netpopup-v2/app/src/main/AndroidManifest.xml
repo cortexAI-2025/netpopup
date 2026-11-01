@@ -23,14 +23,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Wi‑Fi / Wi‑Fi Aware permissions (also used for hotspot APK sharing) -->
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Android 13+ runtime permission for Wi‑Fi operations (including Aware and Wi‑Fi P2P) -->
-    <uses-permission
-        android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation" />
     <!-- Android 17+ gates local network access; Wi‑Fi Aware peers over link-local IPv6 -->
-    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- Keep hotspot alive while sharing the APK -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -47,15 +41,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     
     <!-- Microphone for voice notes -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Camera for QR verification -->
-    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Storage permissions for file sharing -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- Haptic feedback permission -->
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -67,8 +55,6 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
     <!-- Device support hint for Wi‑Fi Aware (optional) -->
-    <uses-feature android:name="android.hardware.wifi.aware" android:required="false" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <permission
         android:name="com.netpopup.v2.permission.FORCE_FINISH"

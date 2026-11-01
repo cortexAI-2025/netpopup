@@ -36,3 +36,6 @@ Thumbs.db
 # Kotlin / Java
 *.class
 *.log
+
+# NetPopUp V2 : clé bêta volontairement versionnée (non secrète, voir netpopup-v2/signing/README.md)
+!netpopup-v2/signing/netpopup-beta.jks

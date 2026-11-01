@@ -47,7 +47,7 @@
   <string name="notification_summary_more">and %1$d more</string>
   <string name="notification_messages_from_people">%1$d messages from %2$d people</string>
   <string name="notification_more_conversations">and %1$d more conversations</string>
-  <string name="notification_active_peers_title">bitchatters nearby!</string>
+  <string name="notification_active_peers_title">NetPopUp users nearby!</string>
   <string name="notification_active_peers_one">1 person around</string>
   <string name="notification_active_peers_many">%1$d people around</string>
   <string name="notification_new_messages">New Messages</string>
@@ -548,14 +548,14 @@
   <string name="open_location_settings">Open Location Settings</string>
   <string name="check_again">Check Again</string>
   <string name="location_services_unavailable">Location Services Unavailable</string>
-  <string name="location_unavailable_explanation">Location services are not available on this device. This is unusual as location services are standard on Android devices.\n\nbitchat needs location services for Bluetooth scanning to work properly (Android requirement). Without this, the app cannot discover nearby users.</string>
+  <string name="location_unavailable_explanation">Location services are not available on this device. This is unusual as location services are standard on Android devices.\n\nNetPopUp needs location services for Bluetooth scanning to work properly (Android requirement). Without this, the app cannot discover nearby users.</string>
   <string name="checking_location_services">Checking location services...</string>
   <string name="bluetooth_required">Bluetooth Required</string>
   <string name="bluetooth_needs_for">NetPopUp needs Bluetooth to:</string>
   <string name="bluetooth_needs_bullets">• Discover nearby users\n• Create mesh network connections\n• Send and receive messages\n• Work without internet or servers</string>
   <string name="enable_bluetooth">Enable Bluetooth</string>
   <string name="bluetooth_not_supported">Bluetooth Not Supported</string>
-  <string name="bluetooth_unsupported_explanation">This device doesn\'t support Bluetooth Low Energy (BLE), which is required for NetPopUp to function.\n\nbitchat needs BLE to create mesh networks and communicate with nearby devices without internet.</string>
+  <string name="bluetooth_unsupported_explanation">This device doesn\'t support Bluetooth Low Energy (BLE), which is required for NetPopUp to function.\n\nNetPopUp needs BLE to create mesh networks and communicate with nearby devices without internet.</string>
   <string name="checking_bluetooth_status">Checking Bluetooth status...</string>
   <string name="battery_optimization_detected_title">Battery optimization detected</string>
   <string name="battery_optimization_enabled_title">Battery Optimization Enabled</string>

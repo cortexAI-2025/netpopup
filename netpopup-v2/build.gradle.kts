@@ -15,7 +15,8 @@ val resolveIdeRuntimeClasspathCopyLocks = tasks.register("resolveIdeRuntimeClass
 subprojects {
     dependencyLocking {
         lockAllConfigurations()
-        lockMode.set(LockMode.STRICT)
+        // NetPopUp V2 : verrous indulgents, car des dépendances ont été retirées (ML Kit, CameraX) sans régénérer les verrous
+        lockMode.set(LockMode.LENIENT)
     }
 
     pluginManager.withPlugin("com.android.application") {
