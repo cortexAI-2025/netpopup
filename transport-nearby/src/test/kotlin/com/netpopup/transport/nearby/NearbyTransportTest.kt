@@ -343,4 +343,75 @@ class NearbyTransportTest {
         assertTrue(manager.links().isEmpty())
         assertTrue("la rotation a déconnecté le pair côté Nearby", r.api.calls.contains("disconnect:p1"))
     }
+
+    // ── Diagnostic ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `diagnostics start clean and count a clean cycle`() = runTest {
+        val r = rig()
+        r.transport.start(); runCurrent()
+        val d = r.transport.diagnostics.value
+        assertEquals(1, d.cycles)
+        assertEquals(null, d.advertisingError)
+        assertEquals(null, d.discoveryError)
+    }
+
+    @Test
+    fun `a Nearby error is reported with its status instead of being swallowed`() = runTest {
+        val r = rig()
+        r.api.advertiseFailure = NearbyApiException(8034, "8034 MISSING_PERMISSION_BLUETOOTH_ADVERTISE")
+        r.api.discoveryFailure = NearbyApiException(8007, "8007 STATUS_RADIO_ERROR")
+        r.transport.start(); runCurrent()
+        val d = r.transport.diagnostics.value
+        assertEquals("startAdvertising: 8034 MISSING_PERMISSION_BLUETOOTH_ADVERTISE", d.advertisingError)
+        assertEquals("startDiscovery: 8007 STATUS_RADIO_ERROR", d.discoveryError)
+        assertEquals(TransportState.DEGRADED, r.transport.state.value)
+    }
+
+    @Test
+    fun `an error clears once the next cycle succeeds`() = runTest {
+        val r = rig()
+        r.api.advertiseFailure = NearbyApiException(8007, "8007 STATUS_RADIO_ERROR")
+        r.transport.start(); runCurrent()
+        assertTrue(r.transport.diagnostics.value.advertisingError != null)
+        r.api.advertiseFailure = null
+        advanceTimeBy(61.seconds); runCurrent()
+        assertEquals(null, r.transport.diagnostics.value.advertisingError)
+    }
+
+    @Test
+    fun `a missing permission is reported`() = runTest {
+        val r = rig()
+        r.api.advertiseFailure = NearbyPermissionException("no permission")
+        r.transport.start(); runCurrent()
+        assertEquals("startAdvertising: permission missing", r.transport.diagnostics.value.advertisingError)
+        assertEquals(TransportState.UNAVAILABLE, r.transport.state.value)
+    }
+
+    @Test
+    fun `meetings are counted from the endpoint to the open link`() = runTest {
+        val r = rig()
+        r.transport.start(); runCurrent()
+        r.api.listener!!.onEndpointFound("E1", higher); runCurrent()
+        r.api.connect("E1", incoming = false, remoteName = higher); runCurrent()
+        r.api.connect("E2", incoming = true); runCurrent()
+        val d = r.transport.diagnostics.value
+        assertEquals(1, d.endpointsFound)
+        assertEquals(1, d.connectionRequests)
+        assertEquals(1, d.connectionsProposed)
+        assertEquals(2, d.connectionsOpened)
+    }
+
+    @Test
+    fun `a refused request and a failed handshake are reported`() = runTest {
+        val r = rig()
+        r.transport.start(); runCurrent()
+        r.api.requestFailure = NearbyApiException(8012, "8012 STATUS_ENDPOINT_IO_ERROR")
+        r.api.listener!!.onEndpointFound("E1", higher); runCurrent()
+        assertEquals("requestConnection: 8012 STATUS_ENDPOINT_IO_ERROR", r.transport.diagnostics.value.lastConnectionError)
+        r.api.listener!!.onConnectionInitiated("E2", "peer", true)
+        r.api.listener!!.onConnectionResult("E2", false); runCurrent()
+        assertEquals("connection result: failed", r.transport.diagnostics.value.lastConnectionError)
+        assertEquals(0, r.transport.diagnostics.value.connectionsOpened)
+    }
 }

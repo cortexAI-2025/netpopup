@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netpopup.dtn.presentation.LifetimeChoices
 import com.netpopup.mesh.MeshPermissions
+import com.netpopup.transport.nearby.NearbyDiagnostics
 import com.netpopup.ui.component.NetPopUpTopBar
 import com.netpopup.ui.theme.Error
 import com.netpopup.ui.theme.Primary
@@ -129,6 +130,7 @@ fun SettingsContent(state: SettingsUiState, permissionsMissing: Boolean, onBack:
                     color = TextSecondary, style = MaterialTheme.typography.bodySmall
                 )
             }
+            item { NearbyDiagnosticsBlock(state.nearby) }
             if (permissionsMissing) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -237,5 +239,21 @@ private fun NameField(current: String, onSave: (String) -> Unit, onGenerate: () 
             }
             OutlinedButton(onClick = onGenerate) { Text("Random name") }
         }
+    }
+}
+
+/** Pourquoi deux téléphones se voient ou non : l'état de Nearby, en clair, sans aucune donnée de conversation. */
+@Composable
+internal fun NearbyDiagnosticsBlock(d: NearbyDiagnostics) {
+    Column(Modifier.testTag("nearby_diagnostics"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("Nearby diagnostics", color = TextPrimary, style = MaterialTheme.typography.labelLarge)
+        val lines = listOf(
+            "Broadcast cycles: ${d.cycles}",
+            "Advertising: ${d.advertisingError ?: if (d.cycles == 0) "not started" else "OK"}",
+            "Discovery: ${d.discoveryError ?: if (d.cycles == 0) "not started" else "OK"}",
+            "Phones seen: ${d.endpointsFound}",
+            "Connections requested: ${d.connectionRequests} · proposed to us: ${d.connectionsProposed} · opened: ${d.connectionsOpened}",
+        ) + listOfNotNull(d.lastConnectionError?.let { "Last connection error: $it" })
+        lines.forEach { Text(it, color = TextSecondary, style = MaterialTheme.typography.bodySmall) }
     }
 }

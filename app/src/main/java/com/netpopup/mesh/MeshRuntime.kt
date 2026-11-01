@@ -9,6 +9,7 @@ import com.netpopup.dtn.presentation.LifetimeChoices
 import com.netpopup.engine.MeshEngine
 import com.netpopup.settings.AppSettings
 import com.netpopup.storage.MeshDatabase
+import com.netpopup.transport.nearby.NearbyDiagnostics
 import com.netpopup.transport.nearby.NearbyTransport
 import com.netpopup.transport.nearby.gms.GmsNearbyApi
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -44,8 +45,12 @@ class MeshRuntime @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
 
+    private val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
+
+    /** Ce que Nearby répond (erreurs de démarrage, téléphones aperçus) : pour l'écran de diagnostic des réglages. */
+    val nearbyDiagnostics: StateFlow<NearbyDiagnostics> = nearby.diagnostics
+
     private val engine: Deferred<MeshEngine> = engineScope.async {
-        val nearby = NearbyTransport(GmsNearbyApi(context.applicationContext), engineScope)
         MeshEngine(
             db = database.sql,
             transports = listOf(nearby),

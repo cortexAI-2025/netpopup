@@ -7,6 +7,7 @@ import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
 import com.google.android.gms.nearby.connection.ConnectionResolution
+import com.google.android.gms.nearby.connection.ConnectionsStatusCodes
 import com.google.android.gms.nearby.connection.ConnectionsClient
 import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo
 import com.google.android.gms.nearby.connection.DiscoveryOptions
@@ -16,6 +17,7 @@ import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
 import com.netpopup.transport.nearby.NearbyApi
+import com.netpopup.transport.nearby.NearbyApiException
 import com.netpopup.transport.nearby.NearbyConfig
 import com.netpopup.transport.nearby.NearbyListener
 import com.netpopup.transport.nearby.NearbyPermissionException
@@ -121,7 +123,9 @@ class GmsNearbyApi(
         try {
             block()
         } catch (e: ApiException) {
-            if (e.statusCode !in okStatuses) throw e
+            if (e.statusCode !in okStatuses) {
+                throw NearbyApiException(e.statusCode, "${e.statusCode} ${ConnectionsStatusCodes.getStatusCodeString(e.statusCode)}", e)
+            }
         } catch (e: SecurityException) {
             throw NearbyPermissionException("Nearby permission missing", e)
         }
