@@ -7,8 +7,8 @@ Point de départ : version de référence `0ec03bd` (premier succès terrain, vo
 |---|---|---|---|
 | ARM64 **release** (R8 + réduction des ressources) | n'existait pas | **5 989 662 octets (5,71 Mio)** | — |
 | universal **release** (ARM64 + ARM32) | n'existait pas | 6 039 735 octets (5,76 Mio) | — |
-| ARM64 debug | 45,28 Mo (rapporté sur téléphone) | 30 004 137 octets (28,61 Mio) | −34 % |
-| universal debug | 77,21 Mo (rapporté sur téléphone) | 30 054 210 octets (28,66 Mio) | −61 % |
+| ARM64 debug | 45,28 Mo (rapporté sur téléphone, en Mio : même unité que l'affichage Android) | 30 004 137 octets (28,61 Mio) | −37 % |
+| universal debug | 77,21 Mo (rapporté sur téléphone) | 30 054 210 octets (28,66 Mio) | −63 % (en partie dû au retrait des architectures x86) |
 
 Mesure intermédiaire, avant retraits (commit `daf702a`, release R8 seul) : ARM64 release 17,78 Mio, dont Tor natif 5,2 Mio, ML Kit 4,7 Mio,
 tables PQC « Picnic » 1,2 Mio, modèles ML Kit 0,8 Mio. Les retraits ci-dessous ont fait passer de 17,78 à 5,71 Mio.
