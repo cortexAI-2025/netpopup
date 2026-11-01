@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: ['**']
+    # NetPopUp V2 (netpopup-v2/) a sa propre CI : build-v2.yml
+    paths-ignore: ['netpopup-v2/**', '.github/workflows/build-v2.yml']
   pull_request:
+    paths-ignore: ['netpopup-v2/**', '.github/workflows/build-v2.yml']
 
 # Un nouveau push annule le run précédent de la même branche (les runs Android durent ~15 min).
 concurrency:
