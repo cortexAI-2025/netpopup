@@ -40,6 +40,8 @@ jobs:
           cd app/build/outputs/apk/debug
           ls -la *.apk
           sha256sum *.apk | tee "$GITHUB_STEP_SUMMARY"
+      - name: Rapport de taille
+        run: tools/size-report.sh app/build/outputs/apk/debug/app-arm64-v8a-debug.apk | tee "$GITHUB_WORKSPACE/size-report-debug.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: netpopup-v2-debug-apk
@@ -49,6 +51,10 @@ jobs:
         with:
           name: netpopup-v2-permissions
           path: permissions.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-v2-size-report-debug
+          path: size-report-debug.txt
 
   unit-tests:
     name: Tests unitaires
@@ -69,3 +75,41 @@ jobs:
           name: netpopup-v2-test-reports
           path: netpopup-v2/app/build/reports/tests/
           if-no-files-found: ignore
+
+  build-release:
+    name: Build APK release (bêta, signé avec la clé bêta non secrète)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble release (R8 + resource shrinking)
+        run: ./gradlew --no-daemon :app:assembleRelease
+      - name: Checksums
+        run: |
+          cd app/build/outputs/apk/release
+          ls -la *.apk
+          sha256sum *.apk | tee "$GITHUB_STEP_SUMMARY"
+      - name: Permissions du manifeste fusionné release (INTERNET doit être absent)
+        run: |
+          f=$(find app/build -path '*merged_manifests/release*' -name AndroidManifest.xml | head -1)
+          echo "Manifeste fusionné : $f"
+          grep -o 'uses-permission[^>]*android:name="[^"]*"' "$f" | sed 's/.*name="//;s/"//' | sort -u | tee "$GITHUB_WORKSPACE/permissions-release.txt"
+          if grep -q 'android.permission.INTERNET' "$f"; then echo "::error::La permission INTERNET est présente dans le manifeste fusionné"; exit 1; fi
+      - name: Rapport de taille
+        run: tools/size-report.sh app/build/outputs/apk/release/app-arm64-v8a-release.apk app/build/outputs/apk/release/app-universal-release.apk | tee "$GITHUB_WORKSPACE/size-report-release.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-v2-release-apk
+          path: netpopup-v2/app/build/outputs/apk/release/*.apk
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-v2-size-report-release
+          path: |
+            size-report-release.txt
+            permissions-release.txt

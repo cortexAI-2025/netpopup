@@ -59,6 +59,16 @@ android {
         includeInBundle = false
     }
 
+    signingConfigs {
+        // Clé bêta NON SECRÈTE (voir signing/README.md) : permet d'installer l'APK release et de le mettre à jour.
+        create("beta") {
+            storeFile = rootProject.file("signing/netpopup-beta.jks")
+            storePassword = "netpopup-beta"
+            keyAlias = "netpopup-beta"
+            keyPassword = "netpopup-beta"
+        }
+    }
+
     buildTypes {
         debug {
             ndk {
@@ -67,6 +77,7 @@ android {
             }
         }
         release {
+            signingConfig = signingConfigs.getByName("beta")
             if (releaseUiTests) {
                 signingConfig = signingConfigs.getByName("debug")
                 proguardFiles("release-instrumentation.pro")
@@ -98,8 +109,8 @@ android {
         abi {
             isEnable = enableSplits
             reset()
-            include("arm64-v8a", "x86_64", "armeabi-v7a", "x86")
-            isUniversalApk = true  // For F-Droid and fallback
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true  // secours : arm64 + arm32 seulement (NetPopUp V2 ne cible que les téléphones ARM)
         }
     }
 
