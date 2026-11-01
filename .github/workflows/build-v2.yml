@@ -1,0 +1,71 @@
+name: NetPopUp V2
+
+# Construit l'application V2 (netpopup-v2/, dérivée de bitchat-android, GPLv3) : APK debug en artefact.
+on:
+  push:
+    branches: ['feature/netpopup-v2-**']
+  pull_request:
+    paths: ['netpopup-v2/**', '.github/workflows/build-v2.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: v2-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: netpopup-v2
+
+jobs:
+  build-apk:
+    name: Build APK debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble debug
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Merged manifest permissions
+        run: |
+          f=$(find app/build -path '*merged_manifests/debug*' -name AndroidManifest.xml | head -1)
+          echo "Manifeste fusionné : $f"
+          grep -o 'uses-permission[^>]*android:name="[^"]*"' "$f" | sed 's/.*name="//;s/"//' | sort -u | tee "$GITHUB_WORKSPACE/permissions.txt"
+      - name: Checksums
+        run: |
+          cd app/build/outputs/apk/debug
+          ls -la *.apk
+          sha256sum *.apk | tee "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-v2-debug-apk
+          path: netpopup-v2/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netpopup-v2-permissions
+          path: permissions.txt
+
+  unit-tests:
+    name: Tests unitaires
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: netpopup-v2-test-reports
+          path: netpopup-v2/app/build/reports/tests/
+          if-no-files-found: ignore
