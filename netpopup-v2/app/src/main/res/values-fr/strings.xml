@@ -46,7 +46,7 @@
     <string name="notification_summary_more">et %1$d de plus</string>
     <string name="notification_messages_from_people">%1$d messages de %2$d personnes</string>
     <string name="notification_more_conversations">et %1$d conversations de plus</string>
-    <string name="notification_active_peers_title">bitchatters à proximité !</string>
+    <string name="notification_active_peers_title">utilisateurs NetPopUp à proximité !</string>
     <string name="notification_active_peers_one">1 personne à proximité</string>
     <string name="notification_active_peers_many">%1$d personnes à proximité</string>
     <string name="notification_new_messages">Nouveaux messages</string>
@@ -249,7 +249,7 @@
     <string name="bluetooth_needs_bullets">• Découvrir les utilisateurs à proximité\n• Créer des connexions de réseau mesh\n• Envoyer et recevoir des messages\n• Fonctionner sans internet ni serveurs</string>
     <string name="enable_bluetooth">Activer Bluetooth</string>
     <string name="bluetooth_not_supported">Bluetooth non pris en charge</string>
-    <string name="bluetooth_unsupported_explanation">Cet appareil ne prend pas en charge Bluetooth Low Energy (BLE), requis pour le fonctionnement de NetPopUp.\n\nbitchat a besoin de BLE pour créer des réseaux mesh et communiquer sans internet avec les appareils à proximité.</string>
+    <string name="bluetooth_unsupported_explanation">Cet appareil ne prend pas en charge Bluetooth Low Energy (BLE), requis pour le fonctionnement de NetPopUp.\n\nNetPopUp a besoin de BLE pour créer des réseaux mesh et communiquer sans internet avec les appareils à proximité.</string>
     <string name="checking_bluetooth_status">Vérification du statut Bluetooth…</string>
     <string name="battery_optimization_detected_title">optimisation de la batterie détectée</string>
     <string name="battery_optimization_enabled_title">Optimisation de la batterie activée</string>

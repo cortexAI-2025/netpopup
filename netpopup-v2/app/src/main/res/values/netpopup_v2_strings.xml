@@ -35,4 +35,15 @@
     <string name="nup_alone">Aucun téléphone à proximité</string>
     <string name="nup_me">moi</string>
     <string name="nup_unread">%1$d nouveau(x)</string>
+    <string name="nup_public_chat">Discussion publique</string>
+    <string name="nup_public_title">Discussion publique</string>
+    <string name="nup_public_hint">Visible par tous les téléphones NetPopUp à portée. N\'y écrivez rien de secret : utilisez un salon privé.</string>
+    <string name="nup_public_empty">Aucun message public pour l\'instant.</string>
+    <string name="nup_nearby">Personnes proches</string>
+    <string name="nup_nearby_none">Personne pour l\'instant. Rapprochez les téléphones, activez Bluetooth et Localisation, puis patientez une minute.</string>
+    <string name="nup_direct">direct</string>
+    <string name="nup_relayed">via un relais</string>
+    <string name="nup_location_off">Localisation désactivée : Android l\'exige pour que le Bluetooth trouve les téléphones proches. Activez-la.</string>
+    <string name="nup_open_bluetooth_settings">Réglages Bluetooth</string>
+    <string name="nup_open_location_settings">Réglages de localisation</string>
 </resources>

@@ -6,6 +6,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -56,6 +60,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.R
 import com.netpopup.v2.rooms.RoomCrypto
@@ -66,23 +72,26 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Interface NetPopUp V2 : accueil (état, pseudo, salons) et salon. Le mesh Bluetooth vient de [ChatViewModel]. */
+/** Interface NetPopUp V2 : accueil (état, pseudo, personnes proches, salons), discussion publique et salon. */
 @Composable
 fun NetPopUpApp(viewModel: ChatViewModel) {
     val rooms by RoomRepository.core.rooms.collectAsState()
-    var openRoomKey by rememberSaveable { mutableStateOf<String?>(null) }
-    val current = openRoomKey?.let { key -> rooms.firstOrNull { it.key == key } }
+    // "public" : discussion publique ; sinon clé d'un salon ; null : accueil
+    var open by rememberSaveable { mutableStateOf<String?>(null) }
+    val room = open?.let { key -> rooms.firstOrNull { it.key == key } }
 
-    BackHandler(enabled = current != null) { openRoomKey = null }
+    BackHandler(enabled = open != null) { open = null }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding()) {
-        if (current == null) {
-            HomeScreen(viewModel, onOpen = { openRoomKey = it })
-        } else {
-            RoomScreen(viewModel, current.key, current.displayName, onBack = { openRoomKey = null })
+        when {
+            open == PUBLIC -> PublicScreen(viewModel, onBack = { open = null })
+            room != null -> RoomScreen(viewModel, room.key, room.displayName, onBack = { open = null })
+            else -> HomeScreen(viewModel, onOpen = { open = it }, onOpenPublic = { open = PUBLIC })
         }
     }
 }
+
+private const val PUBLIC = "__public__"
 
 @Composable
 private fun rememberBluetoothEnabled(): Boolean {
@@ -103,25 +112,63 @@ private fun rememberBluetoothEnabled(): Boolean {
     return enabled
 }
 
+@Composable
+private fun rememberLocationEnabled(): Boolean {
+    val context = LocalContext.current
+    fun read(): Boolean = try {
+        LocationManagerCompat.isLocationEnabled(context.getSystemService(LocationManager::class.java))
+    } catch (e: Exception) {
+        true
+    }
+    var enabled by remember { mutableStateOf(read()) }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) { enabled = read() }
+        }
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    return enabled
+}
+
+private fun openSettings(context: Context, action: String) {
+    try {
+        context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: Exception) {
+        // pas d'écran de réglages sur cet appareil : rien à faire
+    }
+}
+
 private enum class DialogMode { CREATE, JOIN }
 
 @Composable
-private fun HomeScreen(viewModel: ChatViewModel, onOpen: (String) -> Unit) {
+private fun HomeScreen(viewModel: ChatViewModel, onOpen: (String) -> Unit, onOpenPublic: () -> Unit) {
     val rooms by RoomRepository.core.rooms.collectAsState()
     val unread by RoomRepository.core.unread.collectAsState()
     val peers by viewModel.connectedPeers.collectAsState()
     val nickname by viewModel.nickname.collectAsState()
+    val names by viewModel.peerNicknames.collectAsState()
+    val direct by viewModel.peerDirect.collectAsState()
     val bluetoothOn = rememberBluetoothEnabled()
+    val locationOn = rememberLocationEnabled()
+    val context = LocalContext.current
     var dialog by rememberSaveable { mutableStateOf<DialogMode?>(null) }
     var nickDraft by remember(nickname) { mutableStateOf(nickname) }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
         Text(
             stringResource(if (bluetoothOn) R.string.nup_bluetooth_on else R.string.nup_bluetooth_off),
             color = if (bluetoothOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
+        if (!bluetoothOn) {
+            OutlinedButton(onClick = { openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) }) { Text(stringResource(R.string.nup_open_bluetooth_settings)) }
+        }
+        if (!locationOn) {
+            Text(stringResource(R.string.nup_location_off), color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = { openSettings(context, Settings.ACTION_LOCATION_SOURCE_SETTINGS) }) { Text(stringResource(R.string.nup_open_location_settings)) }
+        }
         Text(stringResource(R.string.nup_peers, peers.size))
 
         OutlinedTextField(
@@ -143,12 +190,25 @@ private fun HomeScreen(viewModel: ChatViewModel, onOpen: (String) -> Unit) {
             OutlinedButton(onClick = { dialog = DialogMode.JOIN }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.nup_join)) }
         }
 
+        Text(stringResource(R.string.nup_nearby), style = MaterialTheme.typography.titleMedium)
+        if (peers.isEmpty()) {
+            Text(stringResource(R.string.nup_nearby_none), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        } else {
+            peers.forEach { id ->
+                val label = names[id]?.takeIf { it.isNotBlank() } ?: id.take(8)
+                val how = stringResource(if (direct[id] == true) R.string.nup_direct else R.string.nup_relayed)
+                Text("$label  ·  $how", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        OutlinedButton(onClick = onOpenPublic, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.nup_public_chat)) }
+
         Text(stringResource(R.string.nup_rooms), style = MaterialTheme.typography.titleMedium)
         if (rooms.isEmpty()) {
             Text(stringResource(R.string.nup_no_rooms), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            LazyColumn(Modifier.weight(1f)) {
-                items(rooms, key = { it.key }) { room ->
+            Column {
+                rooms.forEach { room ->
                     Row(
                         Modifier.fillMaxWidth().clickable { onOpen(room.key) }.padding(vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -263,7 +323,7 @@ private fun RoomScreen(viewModel: ChatViewModel, roomKey: String, title: String,
             Text(stringResource(R.string.nup_empty_room), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).padding(16.dp))
         } else {
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
-                items(messages, key = { it.id }) { MessageRow(it) }
+                items(messages, key = { it.id }) { m -> MessageRow(Line(m.id, m.sender + (m.peerId?.let { " #" + it.take(4) } ?: ""), m.timestampMs, m.text, m.mine)) }
             }
         }
 
@@ -295,10 +355,57 @@ private fun RoomScreen(viewModel: ChatViewModel, roomKey: String, title: String,
     }
 }
 
+private class Line(val id: String, val who: String, val timestampMs: Long, val text: String, val mine: Boolean)
+
 @Composable
-private fun MessageRow(m: RoomMessage) {
+private fun PublicScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
+    val all by viewModel.messages.collectAsState()
+    val peers by viewModel.connectedPeers.collectAsState()
+    val nickname by viewModel.nickname.collectAsState()
+    val myId = viewModel.meshService.myPeerID
+    val lines = remember(all, nickname) {
+        all.filter { !it.isPrivate && it.channel == null && it.type == BitchatMessageType.Message && it.sender != "system" && it.content.isNotBlank() }
+            .map { Line(it.id, it.sender, it.timestamp.time, it.content, it.senderPeerID == myId) }
+    }
+    var draft by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    LaunchedEffect(lines.size) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+
+    Column(Modifier.fillMaxSize().imePadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text(stringResource(R.string.nup_back)) }
+            Text(stringResource(R.string.nup_public_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        }
+        Text(
+            if (peers.isEmpty()) stringResource(R.string.nup_alone) else stringResource(R.string.nup_connected, peers.size),
+            color = if (peers.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Text(stringResource(R.string.nup_public_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        HorizontalDivider()
+        if (lines.isEmpty()) {
+            Text(stringResource(R.string.nup_public_empty), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).padding(16.dp))
+        } else {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
+                items(lines, key = { it.id }) { MessageRow(it) }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(draft, { draft = it }, placeholder = { Text(stringResource(R.string.nup_message_hint)) }, modifier = Modifier.weight(1f), maxLines = 4)
+            Button(enabled = draft.isNotBlank(), onClick = {
+                // Un espace devant empêche qu'un texte commençant par « / » soit pris pour une commande interne.
+                viewModel.sendMessage(" " + draft.trim())
+                draft = ""
+            }) { Text(stringResource(R.string.nup_send)) }
+        }
+    }
+}
+
+@Composable
+private fun MessageRow(m: Line) {
     val time = remember(m.timestampMs) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(m.timestampMs)) }
-    val who = if (m.mine) stringResource(R.string.nup_me) else m.sender + (m.peerId?.let { " #" + it.take(4) } ?: "")
+    val who = if (m.mine) stringResource(R.string.nup_me) else m.who
     Column(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalAlignment = if (m.mine) Alignment.End else Alignment.Start,
