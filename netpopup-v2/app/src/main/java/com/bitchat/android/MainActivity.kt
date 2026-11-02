@@ -153,9 +153,18 @@ class MainActivity : OrientationAwareActivity() {
             onOnboardingFailed = ::handleOnboardingFailed
         )
         
+        val crashReport = com.netpopup.v2.diagnostics.CrashReport(java.io.File(filesDir, "last_crash.txt"))
         setContent {
             BitchatTheme {
-                Scaffold(
+                var crashText by remember { mutableStateOf(crashReport.pending()) }
+                crashText?.let { text ->
+                    com.netpopup.v2.diagnostics.CrashReportDialog(text) {
+                        crashReport.clear()
+                        crashText = null
+                        try { com.bitchat.android.service.MeshForegroundService.start(applicationContext) } catch (_: Exception) { }
+                    }
+                }
+                if (crashText == null) Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->

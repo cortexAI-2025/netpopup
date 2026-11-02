@@ -11,6 +11,14 @@ class BitchatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // NetPopUp V2 : trace du dernier plantage gardée en local (affichée au lancement suivant, voir MainActivity)
+        val crash = com.netpopup.v2.diagnostics.CrashReport(java.io.File(filesDir, "last_crash.txt")) {
+            "NetPopUp ${com.bitchat.android.BuildConfig.VERSION_NAME} (${com.bitchat.android.BuildConfig.BUILD_TYPE}) " +
+                "| ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} | Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
+        }
+        crash.install()
+        val crashPending = crash.pending() != null
+
         // NetPopUp V2 : salons chiffrés (clés dans le Keystore)
         try { com.netpopup.v2.rooms.RoomRepository.init(this) } catch (_: Exception) { }
 
@@ -69,7 +77,8 @@ class BitchatApplication : Application() {
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
 
         // Proactively start the foreground service to keep mesh alive
-        try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
+        // Un plantage en attente : pas de démarrage automatique du service tant que la trace n'a pas pu être lue.
+        if (!crashPending) { try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { } }
 
         // TorManager already initialized above
     }
